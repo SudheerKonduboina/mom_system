@@ -5,17 +5,17 @@ __pycache__/
 *.pyo
 .env
 
-# Node / Extension
+# Chrome Extension / Node
 node_modules/
 dist/
 
-# OS
-.DS_Store
-Thumbs.db
+# Generated audio & storage
+backend/storage/
+*.webm
 
 # Logs
 *.log
 
-# Storage / generated data
-backend/storage/
-*.webm
+# OS
+.DS_Store
+Thumbs.db
