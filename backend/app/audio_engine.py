@@ -5,12 +5,11 @@ import os
 class AudioEngine:
     def __init__(self):
         try:
-            # Detect hardware acceleration
+            # Detect hardware acceleration (GPU vs CPU)
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
             print(f"Initializing Whisper on: {self.device}")
             
-            # Using "base" for speed/efficiency
-            # For better MOM accuracy, you can use "small" or "medium"
+            # Using "base" for optimal speed/accuracy balance
             self.stt_model = whisper.load_model("base", device=self.device)
             
         except Exception as e:
@@ -18,33 +17,39 @@ class AudioEngine:
 
     def process_audio(self, file_path: str):
         """
-        Transcribes audio and returns both raw text and structured segments.
+        Transcribes audio and performs simple gap-based speaker diarization.
         """
         try:
             if not os.path.exists(file_path):
                 raise FileNotFoundError(f"Audio file not found at {file_path}")
 
             # 1. Transcribe the audio file
-            # fp16=False is used to ensure compatibility with CPU-only environments
+            # fp16=False ensures compatibility across all hardware
             result = self.stt_model.transcribe(file_path, verbose=False, fp16=False)
             
-            # 2. Extract full text (from new version)
-            full_text = result['text'].strip()
-
-            # 3. Extract segments with timestamps (from old version)
-            # This is critical for MOM to track when things were said
             structured_segments = []
-            for item in result['segments']:
+            current_speaker = 1
+            
+            # 2. Process segments and apply Simple Diarization logic
+            for i, item in enumerate(result['segments']):
+                # LOGIC: If silence between segments > 1.5s, assume a different speaker
+                if i > 0:
+                    prev_end = result['segments'][i-1]['end']
+                    curr_start = item['start']
+                    if (curr_start - prev_end) > 1.5:
+                        # Toggle between Speaker 1 and Speaker 2
+                        current_speaker = 2 if current_speaker == 1 else 1
+                
                 structured_segments.append({
                     "start": item['start'],
                     "end": item['end'],
                     "text": item['text'].strip(),
-                    "speaker_id": "Speaker_Unknown" # Placeholder for future diarization
+                    "speaker_id": f"Speaker {current_speaker}"
                 })
 
-            # Return a dictionary containing both formats
+            # 3. Return the full intelligence package
             return {
-                "raw_text": full_text,
+                "raw_text": result['text'].strip(),
                 "segments": structured_segments
             }
 

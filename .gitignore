@@ -15,3 +15,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Storage / generated data
+backend/storage/
+*.webm

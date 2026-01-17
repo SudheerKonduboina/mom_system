@@ -3,8 +3,9 @@
 <head>
     <title>AI MOM System</title>
     <style>
-        body { width: 320px; padding: 15px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        h2 { color: #333; margin-top: 0; }
+        body { width: 320px; padding: 15px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #ffffff; }
+        h2 { color: #333; margin-top: 0; border-bottom: 2px solid #f0f0f0; padding-bottom: 5px; }
+        
         button { width: 100%; margin-bottom: 8px; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: opacity 0.2s; }
         button:hover { opacity: 0.8; }
         
@@ -25,20 +26,37 @@
             100% { opacity: 1; }
         }
 
-        #status { margin-top: 10px; font-style: italic; color: #555; display: flex; align-items: center; }
+        #status { margin-top: 10px; font-style: italic; color: #555; display: flex; align-items: center; min-height: 20px; }
         
         #resultsSection { 
             margin-top: 15px; 
             border-top: 2px solid #eee; 
             padding-top: 10px; 
-            max-height: 400px; 
+            max-height: 300px; 
             overflow-y: auto; 
         }
         
-        h3 { font-size: 1em; color: #444; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
-        #summaryText { font-size: 0.9em; line-height: 1.5; color: #333; background: #f9f9f9; padding: 10px; border-radius: 4px; }
+        h3 { font-size: 0.9em; color: #444; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; border-left: 3px solid #007bff; padding-left: 8px; }
+        #summaryText { font-size: 0.9em; line-height: 1.5; color: #333; background: #f9f9f9; padding: 10px; border-radius: 4px; margin-bottom: 15px; }
         #actionList { padding-left: 20px; font-size: 0.9em; color: #333; }
-        li { margin-bottom: 5px; }
+        li { margin-bottom: 8px; }
+
+        /* History Section Styling */
+        #historySection {
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 1px dashed #ccc;
+        }
+        #historyList { list-style: none; padding: 0; font-size: 12px; color: #555; }
+        .history-item { 
+            padding: 8px; 
+            border-bottom: 1px solid #f0f0f0; 
+            display: flex; 
+            justify-content: space-between;
+            align-items: center;
+        }
+        .history-item a { color: #007bff; text-decoration: none; font-weight: 500; }
+        .history-item a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -47,12 +65,9 @@
     <button id="start" style="background-color: #d4edda; color: #155724;">Start Recording</button>
     <button id="stop" style="background-color: #f8d7da; color: #721c24;">Stop & Generate MOM</button>
     
-    <button id="viewHistory" style="background-color: #e2e3e5; color: #383d41;">View Meeting History</button>
-    <button id="viewHistory" style="background-color: #e2e3e5; margin-top: 10px;">View History</button>
-    
     <div id="status">
         <span id="pulseContainer"></span>
-        <span id="statusText">Ready</span>
+        <span id="statusText">Ready to record</span>
     </div>
 
     <div id="resultsSection" style="display:none;">
@@ -61,6 +76,12 @@
         
         <h3>Action Items</h3>
         <ul id="actionList"></ul>
+    </div>
+
+    <div id="historySection">
+        <h3>Meeting History</h3>
+        <ul id="historyList">
+            </ul>
     </div>
 
     <script src="popup.js"></script>
