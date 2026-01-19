@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Edit Meeting Minutes</title>
+    <script src="html2pdf.bundle.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 20px; background-color: #f4f7f6; }
+        
+        .no-print { 
+            background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05); position: sticky; top: 10px; z-index: 100;
+        }
+
+        .document { background: white; padding: 50px; border-radius: 2px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); min-height: 1000px; }
+        
+        /* Editable area styling */
+        [contenteditable="true"]:hover { background-color: #f0f7ff; outline: 1px dashed #3498db; }
+        [contenteditable="true"]:focus { background-color: #fff; outline: 2px solid #3498db; }
+
+        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+        h2 { color: #2980b9; margin-top: 30px; border-left: 5px solid #3498db; padding-left: 15px; }
+        
+        .btn-download { background: #27ae60; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-download:hover { background: #219150; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        table th, table td { border: 1px solid #dfe6e9; padding: 12px; text-align: left; }
+        table th { background-color: #34495e; color: white; }
+    </style>
+</head>
+<body>
+
+    <div class="no-print">
+        <span><b>Editor Mode:</b> You can click and edit any text below.</span>
+        <button id="downloadPdf" class="btn-download">Download as PDF</button>
+    </div>
+
+    <div class="document" id="mom-content">
+        <h1 contenteditable="true">Minutes of Meeting</h1>
+        
+        <div class="meta-grid">
+            <p><b>Meeting Details:</b> <span id="meetDate" contenteditable="true">-</span></p>
+            <p><b>Participants:</b> <span id="participants" contenteditable="true">-</span></p>
+            <p><b>Agenda:</b> <span id="agenda" contenteditable="true">-</span></p>
+        </div>
+
+        <h2>Key Discussions</h2>
+        <div id="discussions" contenteditable="true"></div>
+
+        <h2>Decisions</h2>
+        <ul id="decisions" contenteditable="true"></ul>
+
+        <h2>Action Items</h2>
+        <table id="actionTable">
+            <thead>
+                <tr>
+                    <th>Task</th>
+                    <th>Owner</th>
+                    <th>Deadline</th>
+                </tr>
+            </thead>
+            <tbody id="actionBody" contenteditable="true">
+                </tbody>
+        </table>
+
+        <h2>Risks & Follow-ups</h2>
+        <div id="risks" contenteditable="true" style="background: #fff5f5; padding: 15px; border-left: 5px solid #e74c3c;"></div>
+
+        <h2>Conclusion</h2>
+        <p id="conclusion" contenteditable="true"></p>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>

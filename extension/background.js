@@ -1,134 +1,115 @@
-// Service Worker: Acts as the orchestrator between the UI and the Audio Engine
-let isRecording = false;
+let recordingState = "inactive";
 
-// 1. Listen for messages from popup.js
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    try {
-        if (request.action === "START_RECORDING") {
-            startCapture();
-        } else if (request.action === "STOP_RECORDING") {
-            stopCapture();
-        } else if (request.action === "AUDIO_DATA_READY") {
-            // Handle audio data received from the offscreen document
-            handleOffscreenAudio(request.data);
+    if (request.action === "START_RECORDING") {
+        if (recordingState === "inactive") {
+            recordingState = "recording";
+            startCapture(request.streamId);
         }
-    } catch (error) {
-        console.error("Background Orchestration Error:", error);
+    } 
+    else if (request.action === "STOP_RECORDING") {
+        recordingState = "inactive";
+        chrome.runtime.sendMessage({ action: 'STOP_RECORDING', target: 'offscreen' });
+    } 
+    else if (request.action === "GET_STATE") {
+        sendResponse({ state: recordingState });
+    } 
+    else if (request.action === "AUDIO_DATA_READY") {
+        handleOffscreenAudio(request.data);
     }
-    return true; // Keep the message channel open for async responses
+    
+    if (["PAUSE_RECORDING", "RESUME_RECORDING"].includes(request.action)) {
+        recordingState = (request.action === "PAUSE_RECORDING") ? "paused" : "recording";
+        chrome.runtime.sendMessage({ action: request.action, target: 'offscreen' });
+    }
+    
+    return true; 
 });
 
-// 2. Optimized startCapture to satisfy Chrome's User Gesture requirement
-function startCapture() {
-    if (isRecording) return;
+async function startCapture(streamId) {
+    await closeOffscreen();
+    const existingContexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
 
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        const tab = tabs[0];
-        if (!tab) {
-            console.error("No active tab found.");
-            return;
+    if (existingContexts.length === 0) {
+        try {
+            await chrome.offscreen.createDocument({
+                url: 'offscreen.html',
+                reasons: ['USER_MEDIA'],
+                justification: 'Recording meeting audio for transcription'
+            });
+        } catch (e) {
+            console.error("Offscreen creation failed:", e);
         }
-
-        chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }, async (streamId) => {
-            if (chrome.runtime.lastError) {
-                console.error("Stream ID Error:", chrome.runtime.lastError.message);
-                return;
-            }
-
-            try {
-                // 3. Create or find the Offscreen Document
-                const existingContexts = await chrome.runtime.getContexts({
-                    contextTypes: ['OFFSCREEN_DOCUMENT']
-                });
-
-                if (existingContexts.length === 0) {
-                    await chrome.offscreen.createDocument({
-                        url: 'offscreen.html',
-                        reasons: ['USER_MEDIA'],
-                        justification: 'Capturing tab audio for AI Meeting Intelligence'
-                    });
-                }
-
-                // 4. Trigger recording in offscreen
-                chrome.runtime.sendMessage({
-                    action: 'START_RECORDING',
-                    target: 'offscreen',
-                    streamId: streamId
-                });
-
-                isRecording = true;
-                console.log("Recording state: ACTIVE");
-
-            } catch (e) {
-                console.error("Offscreen Document Setup Failed:", e);
-            }
-        });
-    });
-}
-
-// 5. Signals the offscreen document to finalize recording
-async function stopCapture() {
-    try {
-        if (!isRecording) return;
-
-        chrome.runtime.sendMessage({
-            action: 'STOP_RECORDING',
-            target: 'offscreen'
-        });
-
-        isRecording = false;
-        console.log("Recording state: STOPPED. Processing audio...");
-    } catch (e) {
-        console.error("Stop Sequence Failed:", e);
     }
+
+    setTimeout(() => {
+        chrome.runtime.sendMessage({
+            action: 'START_RECORDING',
+            target: 'offscreen',
+            streamId: streamId
+        });
+    }, 600);
 }
 
-// 6. Bridge: Converts DataURL from Offscreen back to a Blob for Upload
 async function handleOffscreenAudio(dataUrl) {
     try {
-        const response = await fetch(dataUrl);
-        const audioBlob = await response.blob();
+        const arr = dataUrl.split(',');
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) { u8arr[n] = bstr.charCodeAt(n); }
+        const blob = new Blob([u8arr], { type: mime });
         
-        await sendToBackend(audioBlob);
-
-        // Cleanup: Close offscreen document to free up memory
-        await chrome.offscreen.closeDocument();
-    } catch (e) {
-        console.error("Audio conversion failed:", e);
+        // We close offscreen FIRST to free up memory before the heavy fetch
+        await closeOffscreen();
+        await sendToBackend(blob); 
+    } catch (e) { 
+        console.error("Audio processing error:", e); 
     }
 }
 
-// 7. Transmission: Sends the final file to your FastAPI Server
-async function sendToBackend(blob) {
-    try {
-        console.log("Sending audio to AI Backend...");
-        const formData = new FormData();
-        formData.append("file", blob, "meeting_audio.webm");
+async function closeOffscreen() {
+    const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+    if (contexts.length > 0) await chrome.offscreen.closeDocument();
+}
 
-        const response = await fetch("http://localhost:8000/analyze-meeting", {
-            method: "POST",
-            body: formData
+async function sendToBackend(blob) {
+    const BACKEND_URL = "http://127.0.0.1:8000/analyze-meeting";
+    
+    // Increased keep-alive frequency for local Whisper processing
+    const keepAlive = setInterval(() => { 
+        console.log("Keep-alive: Backend is processing...");
+        chrome.runtime.getPlatformInfo(() => {}); 
+    }, 500);
+
+    try {
+        const formData = new FormData();
+        formData.append("file", blob, "meeting.webm");
+
+        console.log("Uploading to Local Engine...");
+        const response = await fetch(BACKEND_URL, { 
+            method: "POST", 
+            body: formData 
         });
 
-        if (!response.ok) {
-            const errorDetail = await response.text();
-            throw new Error(`Server Error (${response.status}): ${errorDetail}`);
-        }
+        if (!response.ok) throw new Error(`Server error: ${response.status}`);
 
         const result = await response.json();
-        console.log("MOM Intelligence Received:", result);
         
-        // Save to local storage so the popup can display the summary
-        chrome.storage.local.set({ lastMOM: result });
+        // Save to storage
+        await chrome.storage.local.set({ lastMOM: result });
+        console.log("Analysis complete. Data saved to storage.");
 
-    } catch (error) {
-        // --- NEW ERROR HANDLING BLOCK ---
-        console.error("Backend Transmission Failed:", error);
-        
-        // Notify the popup that something went wrong
-        chrome.runtime.sendMessage({
-            action: "ERROR_OCCURRED",
-            message: "Could not connect to AI Server. Is it running?"
-        });
+        // OPEN DASHBOARD
+        // Use chrome.runtime.getURL to ensure pathing is absolute within the extension
+        const dashboardUrl = chrome.runtime.getURL('dashboard.html');
+        await chrome.tabs.create({ url: dashboardUrl });
+
+    } catch (error) { 
+        console.error("Critical Error:", error);
+        // Optional: Open an error page or alert user
+    } finally { 
+        clearInterval(keepAlive); 
     }
 }

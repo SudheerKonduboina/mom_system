@@ -1,100 +1,134 @@
-import re
+import os
+import json
+import pandas as pd
+import numpy as np
+import spacy
+from pathlib import Path
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Load NLP model locally
+try:
+    nlp = spacy.load("en_core_web_sm")
+except:
+    import subprocess
+    import sys
+    subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
+    nlp = spacy.load("en_core_web_sm")
 
 class NLPProcessor:
     def __init__(self):
-        # Combined triggers for action item detection
-        self.action_triggers = [
-            r"(?i)i will", r"(?i)we need to", r"(?i)let's ensure", 
-            r"(?i)action item", r"(?i)assigned to", r"(?i)by next week",
-            r"(?i)need to", r"(?i)must", r"(?i)task"
-        ]
-        # Words that decrease the clarity score (Vagueness Detection)
-        self.vague_words = ["maybe", "later", "probably", "might", "someone", "sometime", "eventually"]
+        # Local Rule Signals from your engine
+        self.decision_signals = ['decided', 'agreed', 'approved', 'finalized', 'confirmed']
+        self.blocker_signals = ['not decided', 'unclear', 'pending', 'unresolved', 'revisit', 'needs confirmation']
+        self.action_signals = ['will', 'shall', 'responsible', 'assigned to', 'needs to', 'coordinate', 'complete']
+        self.question_signals = ['?', 'should we', 'do we', 'unclear', 'open question']
+        self.domain_keywords = ['deployment', 'deadline', 'budget', 'qa', 'security', 'risk', 'monitoring', 'ui', 'launch', 'pipeline']
+        
+        # Model ID kept for internal reference, though Gemini is no longer used
+        self.model_id = "local-spacy-engine"
 
-    def extract_intel(self, audio_output: dict):
-        """
-        Processes the dictionary from AudioEngine to generate structured MOM.
-        Calculates a real-time Clarity Score based on text quality.
-        """
-        try:
-            full_text = audio_output.get("raw_text", "")
-            segments = audio_output.get("segments", [])
-            action_items = []
-            vague_count = 0
+    def extract_owner(self, doc, prev_entities):
+        current_names = [ent.text for ent in doc.ents if ent.label_ in ["PERSON", "ORG"]]
+        if current_names:
+            return current_names[0]
+        text = doc.text.lower()
+        if any(p in text for p in ["he", "she", "they"]) and prev_entities:
+            return prev_entities[-1]
+        return "Not Mentioned"
 
-            # 1. Analyze Segments for Action Items and Quality
-            for seg in segments:
-                text = seg['text']
-                text_lower = text.lower()
+    def extract_intel(self, transcript_input):
+        # Ensure we have a string
+        if isinstance(transcript_input, dict):
+            transcript_text = transcript_input.get("text", "")
+        else:
+            transcript_text = str(transcript_input)
 
-                # Check for vague language
-                for word in self.vague_words:
-                    if word in text_lower:
-                        vague_count += 1
+        if not transcript_text or len(transcript_text.strip()) < 10:
+            return self._get_empty_response("Transcript too short.")
 
-                # Detect Action Items
-                if any(re.search(trigger, text) for trigger in self.action_triggers):
-                    # Try to detect owner dynamically
-                    owner = self._detect_owner(text)
-                    
-                    action_items.append({
-                        "task": text.strip(),
-                        "owner": owner,
-                        "deadline": self._detect_deadline(text),
-                        "speaker": seg.get("speaker_id", "Unknown"),
-                        "timestamp": seg.get("start", 0)
-                    })
+        # Run Local Engine Analysis
+        doc = nlp(transcript_text)
+        sentences = [sent.text.strip() for sent in doc.sents if len(sent.text.strip()) > 5]
+        
+        if not sentences:
+            return self._get_empty_response("No valid sentences found.")
 
-            # 2. Fallback logic if segments missed everything
-            if not action_items and full_text:
-                action_items = self._fallback_find_actions(full_text)
+        # TF-IDF calculations
+        vectorizer = TfidfVectorizer(stop_words='english')
+        tfidf_matrix = vectorizer.fit_transform(sentences)
+        t_scores = np.asarray(tfidf_matrix.sum(axis=1)).flatten()
+        t_norm = (t_scores / (t_scores.max() if t_scores.max() > 0 else 1)) * 100
+        centroid = np.asarray(tfidf_matrix.mean(axis=0))
+        s_scores = cosine_similarity(tfidf_matrix, centroid).flatten() * 100
 
-            # 3. Calculate Dynamic Clarity Score
-            # Formula: Start at 100%, deduct 5% for vague words, 10% for unassigned tasks
-            unassigned_count = len([a for a in action_items if a['owner'] == "Unassigned"])
-            base_score = 100
-            penalty = (vague_count * 5) + (unassigned_count * 10)
-            final_score = max(5, min(100, base_score - penalty)) / 100
+        # Organize into your project's expected JSON format
+        results = {
+            "agenda": "Weekly Sync Meeting",
+            "participants": [],
+            "key_discussions": "",
+            "decisions": [],
+            "action_items": [], 
+            "risks": "None detected during local analysis.",
+            "conclusion": "Meeting adjourned after key points were summarized.",
+            "summary": "",
+            "clarity_score": round(float(np.mean(s_scores)), 2),
+            "meetDate": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+        }
 
-            return {
-                "summary": self._generate_summary(full_text),
-                "action_items": action_items,
-                "clarity_score": final_score,
-                "analysis": {
-                    "vague_words_found": vague_count,
-                    "unassigned_tasks": unassigned_count,
-                    "total_words": len(full_text.split())
-                }
-            }
-        except Exception as e:
-            print(f"NLP Extraction Error: {str(e)}")
-            raise RuntimeError(f"NLP Extraction Failed: {str(e)}")
+        entity_history = []
+        key_discussion_points = []
 
-    def _detect_owner(self, text: str):
-        """Simple NER logic: Finds capitalized names following assignment keywords."""
-        owner_match = re.search(r"(?:assign to|for|by)\s+([A-Z][a-z]+)", text)
-        return owner_match.group(1) if owner_match else "Unassigned"
+        for i, sent_text in enumerate(sentences):
+            # --- START MERGED LOGIC: SPEAKER DETECTION ---
+            if "Speaker " in sent_text:
+                speaker_label = sent_text.split(":")[0] # Extracts "Speaker 0"
+                if speaker_label not in results["participants"]:
+                    results["participants"].append(speaker_label)
+            # --- END MERGED LOGIC ---
 
-    def _detect_deadline(self, text: str):
-        """Simple regex to find common deadline mentions."""
-        deadline_match = re.search(r"(?i)(by\s+\w+|next\s+\w+|tomorrow|monday|friday)", text)
-        return deadline_match.group(1) if deadline_match else "TBD"
+            low_sent = sent_text.lower()
+            sent_doc = nlp(sent_text)
+            
+            # Extract Owner/Entities
+            owner = self.extract_owner(sent_doc, entity_history)
+            if owner != "Not Mentioned": 
+                entity_history.append(owner)
+                if owner not in results["participants"]: results["participants"].append(owner)
 
-    def _generate_summary(self, text: str):
-        if not text:
-            return "No content to summarize."
-        return text[:300] + "..." if len(text) > 300 else text
+            # Classification
+            has_blocker = any(sig in low_sent for sig in self.blocker_signals)
+            has_decision = any(sig in low_sent for sig in self.decision_signals)
+            has_action = any(sig in low_sent for sig in self.action_signals)
 
-    def _fallback_find_actions(self, text: str):
-        sentences = text.split('.')
-        found = []
-        for s in sentences:
-            if any(re.search(trigger, s) for trigger in self.action_triggers):
-                found.append({
-                    "task": s.strip(), 
-                    "owner": "Unassigned", 
-                    "deadline": "TBD",
-                    "speaker": "Unknown",
-                    "timestamp": 0
+            if has_decision and not has_blocker:
+                results["decisions"].append(sent_text)
+            elif has_action and not has_blocker:
+                # Updated to return dictionary for the HTML table
+                results["action_items"].append({
+                    "task": sent_text,
+                    "owner": owner if owner != "Not Mentioned" else "Assignee TBD",
+                    "deadline": "TBD" 
                 })
-        return found
+            
+            if s_scores[i] > 50: # High importance sentences
+                key_discussion_points.append(sent_text)
+
+        results["key_discussions"] = ". ".join(key_discussion_points[:5])
+        results["summary"] = f"Local analysis completed. Found {len(results['decisions'])} decisions and {len(results['action_items'])} actions."
+        
+        return results
+
+    def _get_empty_response(self, error_msg):
+        return {
+            "agenda": "Error",
+            "participants": [],
+            "key_discussions": error_msg,
+            "decisions": [],
+            "action_items": [],
+            "risks": "None",
+            "conclusion": "N/A",
+            "summary": "Analysis failed.",
+            "clarity_score": 0.0,
+            "meetDate": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+        }

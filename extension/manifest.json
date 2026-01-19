@@ -1,22 +1,32 @@
 {
   "manifest_version": 3,
-  "name": "AI Meeting Intelligence Recorder",
-  "version": "1.0.0",
-  "description": "Captures meeting audio and generates automated MOM.",
+  "name": "AI Meeting Intelligence MOM",
+  "version": "1.0",
+  "description": "Captures tab audio and generates intelligent meeting minutes.",
   "permissions": [
     "tabCapture",
-    "activeTab",
+    "offscreen",
     "storage",
-    "offscreen"
+    "tabs",
+    "activeTab"
   ],
   "host_permissions": [
-    "http://localhost:8000/*"
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html"
   },
-  "background": {
-    "service_worker": "background.js",
-    "type": "module"
-  }
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src http://localhost:8000 http://127.0.0.1:8000 data: blob:;"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["dashboard.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
