@@ -1,134 +1,69 @@
-import os
-import json
 import pandas as pd
 import numpy as np
 import spacy
-from pathlib import Path
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Load NLP model locally
 try:
     nlp = spacy.load("en_core_web_sm")
 except:
-    import subprocess
-    import sys
+    import subprocess, sys
     subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
     nlp = spacy.load("en_core_web_sm")
 
 class NLPProcessor:
     def __init__(self):
-        # Local Rule Signals from your engine
-        self.decision_signals = ['decided', 'agreed', 'approved', 'finalized', 'confirmed']
-        self.blocker_signals = ['not decided', 'unclear', 'pending', 'unresolved', 'revisit', 'needs confirmation']
-        self.action_signals = ['will', 'shall', 'responsible', 'assigned to', 'needs to', 'coordinate', 'complete']
-        self.question_signals = ['?', 'should we', 'do we', 'unclear', 'open question']
-        self.domain_keywords = ['deployment', 'deadline', 'budget', 'qa', 'security', 'risk', 'monitoring', 'ui', 'launch', 'pipeline']
-        
-        # Model ID kept for internal reference, though Gemini is no longer used
-        self.model_id = "local-spacy-engine"
+        self.decision_signals = ["decided", "agreed", "approved", "finalized"]
+        self.blocker_signals = ["pending", "unclear", "revisit"]
+        self.action_signals = ["will", "assigned", "responsible", "complete"]
 
-    def extract_owner(self, doc, prev_entities):
-        current_names = [ent.text for ent in doc.ents if ent.label_ in ["PERSON", "ORG"]]
-        if current_names:
-            return current_names[0]
-        text = doc.text.lower()
-        if any(p in text for p in ["he", "she", "they"]) and prev_entities:
-            return prev_entities[-1]
-        return "Not Mentioned"
+    def extract_intel(self, transcript):
+        if not transcript or len(transcript) < 10:
+            return self._empty()
 
-    def extract_intel(self, transcript_input):
-        # Ensure we have a string
-        if isinstance(transcript_input, dict):
-            transcript_text = transcript_input.get("text", "")
-        else:
-            transcript_text = str(transcript_input)
+        doc = nlp(transcript)
+        sentences = [s.text.strip() for s in doc.sents if len(s.text.strip()) > 2]
 
-        if not transcript_text or len(transcript_text.strip()) < 10:
-            return self._get_empty_response("Transcript too short.")
+        vectorizer = TfidfVectorizer(stop_words="english")
+        tfidf = vectorizer.fit_transform(sentences)
+        scores = cosine_similarity(tfidf, tfidf.mean(axis=0)).flatten()
 
-        # Run Local Engine Analysis
-        doc = nlp(transcript_text)
-        sentences = [sent.text.strip() for sent in doc.sents if len(sent.text.strip()) > 5]
-        
-        if not sentences:
-            return self._get_empty_response("No valid sentences found.")
+        decisions, actions = [], []
 
-        # TF-IDF calculations
-        vectorizer = TfidfVectorizer(stop_words='english')
-        tfidf_matrix = vectorizer.fit_transform(sentences)
-        t_scores = np.asarray(tfidf_matrix.sum(axis=1)).flatten()
-        t_norm = (t_scores / (t_scores.max() if t_scores.max() > 0 else 1)) * 100
-        centroid = np.asarray(tfidf_matrix.mean(axis=0))
-        s_scores = cosine_similarity(tfidf_matrix, centroid).flatten() * 100
+        for sent in sentences:
+            lower = sent.lower()
+            if any(d in lower for d in self.decision_signals):
+                decisions.append(sent)
+            if any(a in lower for a in self.action_signals):
+                actions.append({
+                    "task": sent,
+                    "owner": "TBD",
+                    "deadline": "TBD"
+                })
 
-        # Organize into your project's expected JSON format
-        results = {
-            "agenda": "Weekly Sync Meeting",
+        return {
+            "agenda": "Meeting Analysis",
             "participants": [],
-            "key_discussions": "",
-            "decisions": [],
-            "action_items": [], 
-            "risks": "None detected during local analysis.",
-            "conclusion": "Meeting adjourned after key points were summarized.",
-            "summary": "",
-            "clarity_score": round(float(np.mean(s_scores)), 2),
+            "key_discussions": ". ".join(sentences[:5]),
+            "decisions": decisions,
+            "action_items": actions,
+            "risks": "None detected",
+            "conclusion": "Meeting summarized",
+            "summary": f"{len(sentences)} segments analyzed",
+            "clarity_score": round(float(np.mean(scores) * 100), 2),
             "meetDate": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
         }
 
-        entity_history = []
-        key_discussion_points = []
-
-        for i, sent_text in enumerate(sentences):
-            # --- START MERGED LOGIC: SPEAKER DETECTION ---
-            if "Speaker " in sent_text:
-                speaker_label = sent_text.split(":")[0] # Extracts "Speaker 0"
-                if speaker_label not in results["participants"]:
-                    results["participants"].append(speaker_label)
-            # --- END MERGED LOGIC ---
-
-            low_sent = sent_text.lower()
-            sent_doc = nlp(sent_text)
-            
-            # Extract Owner/Entities
-            owner = self.extract_owner(sent_doc, entity_history)
-            if owner != "Not Mentioned": 
-                entity_history.append(owner)
-                if owner not in results["participants"]: results["participants"].append(owner)
-
-            # Classification
-            has_blocker = any(sig in low_sent for sig in self.blocker_signals)
-            has_decision = any(sig in low_sent for sig in self.decision_signals)
-            has_action = any(sig in low_sent for sig in self.action_signals)
-
-            if has_decision and not has_blocker:
-                results["decisions"].append(sent_text)
-            elif has_action and not has_blocker:
-                # Updated to return dictionary for the HTML table
-                results["action_items"].append({
-                    "task": sent_text,
-                    "owner": owner if owner != "Not Mentioned" else "Assignee TBD",
-                    "deadline": "TBD" 
-                })
-            
-            if s_scores[i] > 50: # High importance sentences
-                key_discussion_points.append(sent_text)
-
-        results["key_discussions"] = ". ".join(key_discussion_points[:5])
-        results["summary"] = f"Local analysis completed. Found {len(results['decisions'])} decisions and {len(results['action_items'])} actions."
-        
-        return results
-
-    def _get_empty_response(self, error_msg):
+    def _empty(self):
         return {
             "agenda": "Error",
             "participants": [],
-            "key_discussions": error_msg,
+            "key_discussions": "Transcript too short",
             "decisions": [],
             "action_items": [],
             "risks": "None",
             "conclusion": "N/A",
-            "summary": "Analysis failed.",
+            "summary": "Failed",
             "clarity_score": 0.0,
             "meetDate": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
         }

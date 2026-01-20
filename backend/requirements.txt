@@ -1,16 +1,12 @@
-# Core API & Server
-fastapi==0.109.0
-uvicorn==0.27.0
-pydantic==2.5.3
-python-dotenv==1.0.0
-
-# Audio Processing (Whisper & Diarization)
-openai-whisper==20231117
-pyannote.audio==3.1.1
-torch==2.9.1
-
-# Local NLP Engine (Local Analysis)
-spacy==3.7.2
-pandas==2.1.4
-numpy==1.26.4
-scikit-learn==1.3.2
+fastapi
+uvicorn
+openai-whisper
+torch
+pyannote.audio
+soundfile
+librosa
+numpy
+pandas
+scikit-learn
+spacy
+python-dotenv
