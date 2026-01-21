@@ -1,14 +1,13 @@
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Load Data from Storage
     chrome.storage.local.get(['lastMOM'], (result) => {
-        if (!result.lastMOM) {
-            alert("No meeting data found.");
-            return;
-        }
-
-        const data = result.lastMOM;
-        updateDashboard(data);
+    if (!result.lastMOM) {
+        alert("No MOM data found");
+        return;
+    }
+    updateDashboard(result.lastMOM);
     });
+
 
     // 2. PDF Download Logic
     document.getElementById('downloadPdf').addEventListener('click', () => {
