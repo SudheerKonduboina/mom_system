@@ -61,79 +61,33 @@ except Exception as e:
 async def analyze_meeting(file: UploadFile = File(...)):
     filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_meeting.webm")
     path = os.path.join(STORAGE, filename)
-    json_path = path.replace(".webm", ".json")  # Save JSON with same name
 
     try:
-        # Save uploaded audio
         with open(path, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
-        # Run Whisper STT
         print("Running Whisper STT...")
         stt = audio_engine.process_audio(path)
+        transcript = stt.get("text", "")
 
-        transcript = ""
-        speakers_info = []
+        print("Generating MOM...")
+        mom = generate_mom_from_transcript(transcript)
 
-        if diarization_pipeline and stt.get("segments"):
-            print("Running Speaker Diarization...")
-            try:
-                waveform, sr = load_audio_safe(path)
-                diarization = diarization_pipeline({
-                    "waveform": waveform,
-                    "sample_rate": sr
-                })
-
-                for seg in stt["segments"]:
-                    speaker = "Unknown"
-                    for turn, _, label in diarization.itertracks(yield_label=True):
-                        if turn.start <= seg["start"] <= turn.end:
-                            speaker = label
-                            break
-                    transcript += f"Speaker {speaker}: {seg['text']}\n"
-                    speakers_info.append({
-                        "speaker": speaker,
-                        "start": seg["start"],
-                        "end": seg["end"],
-                        "text": seg["text"]
-                    })
-
-            except Exception as e:
-                print("Diarization failed, continuing without it:", e)
-                transcript = stt["text"]
-                speakers_info = []
-
-        else:
-            transcript = stt.get("text", "")
-            speakers_info = []
-
-        # Run NLP Intelligence
-        try:
-            print("Running NLP Intelligence...")
-            intel = nlp_processor.extract_intel(transcript)
-            print("Generating MOM...")
-            mom = generate_mom_from_transcript(transcript)
-
-        except Exception as e:
-            print("NLP failed, returning transcript only:", e)
-            intel = {}
-
-        # Save meeting JSON
-        meeting_data = {
+        response = {
             "meeting_id": filename,
             "audio_url": f"/storage/{filename}",
-            "full_transcript": transcript,
-            "speakers": speakers_info,
-            **intel
+            "mom": mom
         }
 
-        with open(json_path, "w", encoding="utf-8") as jf:
-            json.dump(meeting_data, jf, ensure_ascii=False, indent=4)
+        # Save JSON
+        with open(path.replace(".webm", ".json"), "w", encoding="utf-8") as jf:
+            json.dump(response, jf, indent=4)
 
-        return meeting_data
+        return response
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.get("/meetings")

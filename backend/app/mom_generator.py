@@ -1,28 +1,49 @@
-from typing import Dict
-import re
+from datetime import datetime
 
-def generate_mom_from_transcript(transcript: str) -> Dict:
-    if not transcript or len(transcript.strip()) == 0:
-        return {}
+def generate_mom_from_transcript(transcript: str) -> dict:
+    if not transcript or len(transcript) < 20:
+        return empty_mom("Transcript too short")
 
-    # Basic heuristic-based structuring (LLM-ready later)
-    sentences = re.split(r'(?<=[.!?]) +', transcript)
+    sentences = [s.strip() for s in transcript.split('.') if len(s.strip()) > 8]
 
-    key_points = sentences[:10]
-    decisions = [s for s in sentences if "decide" in s.lower() or "decision" in s.lower()]
-    risks = [s for s in sentences if "risk" in s.lower() or "problem" in s.lower()]
-    actions = [s for s in sentences if "should" in s.lower() or "need to" in s.lower()]
+    discussions, decisions, actions = [], [], []
+
+    for s in sentences:
+        l = s.lower()
+        if any(k in l for k in ["decide", "agreed", "final"]):
+            decisions.append(s)
+        elif any(k in l for k in ["need to", "will", "assign"]):
+            actions.append({
+                "task": s,
+                "owner": "TBD",
+                "deadline": "TBD"
+            })
+        else:
+            discussions.append(s)
 
     return {
-        "meetDate": None,
+        "meetDate": datetime.now().strftime("%d %b %Y, %I:%M %p"),
         "participants": [],
-        "agenda": "Auto-generated from meeting discussion",
-        "summary": " ".join(sentences[:5]),
-        "key_discussions": "\n".join(key_points),
-        "decisions": decisions if decisions else [],
-        "action_items": [
-            {"task": a, "owner": "TBD", "deadline": "TBD"} for a in actions[:5]
-        ],
-        "risks": " ".join(risks) if risks else "No major risks discussed.",
-        "conclusion": "Meeting concluded with the above discussion points."
+        "agenda": "Meeting Summary",
+        "key_discussions": "\n• " + "\n• ".join(discussions[:8]),
+        "decisions": decisions or ["No decisions recorded"],
+        "action_items": actions or [{
+            "task": "No action items",
+            "owner": "-",
+            "deadline": "-"
+        }],
+        "risks": "No major risks identified",
+        "conclusion": "Meeting concluded successfully"
+    }
+
+def empty_mom(reason):
+    return {
+        "meetDate": datetime.now().strftime("%d %b %Y, %I:%M %p"),
+        "participants": [],
+        "agenda": "Meeting",
+        "key_discussions": reason,
+        "decisions": [],
+        "action_items": [],
+        "risks": "N/A",
+        "conclusion": "Insufficient data"
     }
