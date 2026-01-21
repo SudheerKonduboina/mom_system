@@ -3,27 +3,25 @@ if not hasattr(torchaudio, "set_audio_backend"):
     torchaudio.set_audio_backend = lambda x: None
 
 import os
+import json
+import shutil
+from datetime import datetime
+from dotenv import load_dotenv
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
-from datetime import datetime
-import shutil
-import json
-from dotenv import load_dotenv
 
 from app.audio_engine import AudioEngine
-from app.nlp_processor import NLPProcessor
 from app.mom_generator import generate_mom_from_transcript
-from app.utils.audio_loader import load_audio_safe
-from pyannote.audio import Pipeline
-import torch
 
-# ENV
+# --------------------------------------------------
+# ENV & APP
+# --------------------------------------------------
 load_dotenv()
-HF_TOKEN = os.getenv("HF_TOKEN")
 
-app = FastAPI()
+app = FastAPI(title="MOM Intelligence Backend", version="1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,95 +31,112 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-# Directories
+# --------------------------------------------------
+# STORAGE
+# --------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STORAGE = os.path.join(BASE_DIR, "storage")
 os.makedirs(STORAGE, exist_ok=True)
 
 app.mount("/storage", StaticFiles(directory=STORAGE), name="storage")
 
-# Initialize engines
+# --------------------------------------------------
+# ENGINES
+# --------------------------------------------------
 audio_engine = AudioEngine()
-nlp_processor = NLPProcessor()
 
-# Load diarization
-try:
-    diarization_pipeline = Pipeline.from_pretrained(
-        "pyannote/speaker-diarization-3.1",
-        use_auth_token=HF_TOKEN
-    )
-    diarization_pipeline.to(torch.device("cpu"))
-    print("Diarization Pipeline Loaded")
-except Exception as e:
-    diarization_pipeline = None
-    print("Diarization Disabled:", e)
-
-
+# --------------------------------------------------
+# API: ANALYZE MEETING
+# --------------------------------------------------
 @app.post("/analyze-meeting")
 async def analyze_meeting(file: UploadFile = File(...)):
+    """
+    Accepts meeting audio, generates transcript and MOM,
+    returns MOM for dashboard & PDF.
+    """
     filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_meeting.webm")
-    path = os.path.join(STORAGE, filename)
+    audio_path = os.path.join(STORAGE, filename)
+    json_path = audio_path.replace(".webm", ".json")
 
     try:
-        with open(path, "wb") as f:
+        # Save audio
+        with open(audio_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
+        # Whisper STT
         print("Running Whisper STT...")
-        stt = audio_engine.process_audio(path)
-        transcript = stt.get("text", "")
+        stt_result = audio_engine.process_audio(audio_path)
+        transcript = stt.get("text", "").strip()
 
+        if len(transcript) < 20:
+            transcript = "Meeting discussion detected but content was unclear. Please review audio manually."
+
+
+        if not transcript:
+            raise ValueError("Empty transcript generated")
+
+        # Generate MOM
         print("Generating MOM...")
         mom = generate_mom_from_transcript(transcript)
 
         response = {
             "meeting_id": filename,
             "audio_url": f"/storage/{filename}",
+            "full_transcript": transcript,
             "mom": mom
         }
 
-        # Save JSON
-        with open(path.replace(".webm", ".json"), "w", encoding="utf-8") as jf:
-            json.dump(response, jf, indent=4)
+        # Persist meeting data
+        with open(json_path, "w", encoding="utf-8") as jf:
+            json.dump(response, jf, ensure_ascii=False, indent=4)
 
         return response
 
     except Exception as e:
+        print("ERROR:", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
+# --------------------------------------------------
+# API: LIST MEETINGS
+# --------------------------------------------------
 @app.get("/meetings")
 async def list_meetings():
     """
-    List all audio files in storage folder (with transcript if available).
+    Returns all past meetings with MOM if available.
     """
     try:
-        files = sorted(os.listdir(STORAGE), reverse=True)
         meetings = []
+        files = sorted(os.listdir(STORAGE), reverse=True)
 
         for f in files:
-            if f.endswith(".webm"):
-                json_path = os.path.join(STORAGE, f.replace(".webm", ".json"))
-                if os.path.exists(json_path):
-                    # Use analyzed data
-                    with open(json_path, "r", encoding="utf-8") as jf:
-                        data = json.load(jf)
-                else:
-                    # If no analysis, just return basic info
-                    data = {
-                        "meeting_id": f,
-                        "audio_url": f"/storage/{f}",
-                        "full_transcript": "",
-                        "speakers": []
-                    }
-                meetings.append(data)
+            if not f.endswith(".webm"):
+                continue
+
+            json_path = os.path.join(STORAGE, f.replace(".webm", ".json"))
+
+            if os.path.exists(json_path):
+                with open(json_path, "r", encoding="utf-8") as jf:
+                    data = json.load(jf)
+            else:
+                data = {
+                    "meeting_id": f,
+                    "audio_url": f"/storage/{f}",
+                    "full_transcript": "",
+                    "mom": None
+                }
+
+            meetings.append(data)
 
         return JSONResponse(content=meetings)
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
+# --------------------------------------------------
+# LOCAL RUN
+# --------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)

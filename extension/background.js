@@ -82,25 +82,39 @@ async function sendToBackend(blob) {
         const formData = new FormData();
         formData.append("file", blob, "meeting.webm");
 
+        console.log("Uploading audio...");
+
         const response = await fetch(BACKEND_URL, {
             method: "POST",
             body: formData
         });
 
-        if (!response.ok) throw new Error("Backend error");
+        if (!response.ok) {
+            throw new Error("Backend failed");
+        }
 
         const result = await response.json();
+        console.log("Backend response:", result);
 
-        // ✅ SAVE MOM ONLY
+        if (!result.mom) {
+            console.error("MOM missing in response");
+            return;
+        }
+
+        //  SAVE ONLY MOM
         await chrome.storage.local.set({
             lastMOM: result.mom
         });
 
-        await chrome.tabs.create({
+        console.log("MOM saved, opening dashboard");
+
+        //  OPEN DASHBOARD
+        chrome.tabs.create({
             url: chrome.runtime.getURL("dashboard.html")
         });
 
-    } catch (e) {
-        console.error("Upload failed:", e);
+    } catch (err) {
+        console.error("Upload failed:", err);
     }
 }
+
