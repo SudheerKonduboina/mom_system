@@ -1,4 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
+
     function loadMOM(retries = 5) {
         chrome.storage.local.get(['lastMOM'], (result) => {
             if (!result.lastMOM) {
@@ -13,8 +14,8 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    document.addEventListener('DOMContentLoaded', loadMOM);
-
+    // ✅ FIX: CALL IT DIRECTLY
+    loadMOM();
 
     document.getElementById("downloadPdf").addEventListener("click", () => {
         const element = document.getElementById("mom-content");
