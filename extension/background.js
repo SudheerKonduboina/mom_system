@@ -1,75 +1,87 @@
 let recordingState = "inactive";
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+
     if (request.action === "START_RECORDING") {
         if (recordingState === "inactive") {
             recordingState = "recording";
             startCapture(request.streamId);
         }
-    } 
-    else if (request.action === "STOP_RECORDING") {
+        sendResponse({ status: "started" });
+        return true;
+    }
+
+    if (request.action === "STOP_RECORDING") {
         recordingState = "inactive";
-        chrome.runtime.sendMessage({ action: 'STOP_RECORDING', target: 'offscreen' });
-    } 
-    else if (request.action === "GET_STATE") {
+
+        chrome.runtime.sendMessage({
+            action: "STOP_RECORDING",
+            target: "offscreen"
+        });
+
+        sendResponse({ status: "stopped" });
+        return true;
+    }
+
+    if (request.action === "GET_STATE") {
         sendResponse({ state: recordingState });
-    } 
-    else if (request.action === "AUDIO_DATA_READY") {
-        handleOffscreenAudio(request.data);
+        return false;
     }
 
-    if (["PAUSE_RECORDING", "RESUME_RECORDING"].includes(request.action)) {
-        recordingState = (request.action === "PAUSE_RECORDING") ? "paused" : "recording";
-        chrome.runtime.sendMessage({ action: request.action, target: 'offscreen' });
+    if (request.action === "AUDIO_DATA_READY") {
+        handleOffscreenAudio(request.data)
+            .then(() => sendResponse({ status: "processed" }))
+            .catch(err => sendResponse({ error: err.message }));
+        return true;
     }
 
-    return true;
+    return false;
 });
 
 async function startCapture(streamId) {
     await closeOffscreen();
-    const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+
+    const contexts = await chrome.runtime.getContexts({
+        contextTypes: ["OFFSCREEN_DOCUMENT"]
+    });
 
     if (contexts.length === 0) {
         await chrome.offscreen.createDocument({
-            url: 'offscreen.html',
-            reasons: ['USER_MEDIA'],
-            justification: 'Recording meeting audio for transcription'
+            url: "offscreen.html",
+            reasons: ["USER_MEDIA"],
+            justification: "Recording meeting audio for transcription"
         });
     }
 
-    setTimeout(() => {
-        chrome.runtime.sendMessage({
-            action: 'START_RECORDING',
-            target: 'offscreen',
-            streamId
-        });
-    }, 600);
+    // ✅ THIS WAS MISSING
+    chrome.runtime.sendMessage({
+        action: "START_RECORDING",
+        target: "offscreen",
+        streamId: streamId
+    });
 }
 
 async function handleOffscreenAudio(dataUrl) {
-    try {
-        const [meta, base64] = dataUrl.split(',');
-        const mime = meta.match(/:(.*?);/)[1];
-        const binary = atob(base64);
-        const buffer = new Uint8Array(binary.length);
+    const [meta, base64] = dataUrl.split(",");
+    const mime = meta.match(/:(.*?);/)[1];
+    const binary = atob(base64);
+    const buffer = new Uint8Array(binary.length);
 
-        for (let i = 0; i < binary.length; i++) {
-            buffer[i] = binary.charCodeAt(i);
-        }
-
-        const blob = new Blob([buffer], { type: mime });
-
-        await closeOffscreen();
-        await sendToBackend(blob);
-
-    } catch (e) {
-        console.error("Audio processing error:", e);
+    for (let i = 0; i < binary.length; i++) {
+        buffer[i] = binary.charCodeAt(i);
     }
+
+    const blob = new Blob([buffer], { type: mime });
+
+    await closeOffscreen();
+    await sendToBackend(blob);
 }
 
 async function closeOffscreen() {
-    const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+    const contexts = await chrome.runtime.getContexts({
+        contextTypes: ["OFFSCREEN_DOCUMENT"]
+    });
+
     if (contexts.length > 0) {
         await chrome.offscreen.closeDocument();
     }
@@ -78,43 +90,19 @@ async function closeOffscreen() {
 async function sendToBackend(blob) {
     const BACKEND_URL = "http://127.0.0.1:8000/analyze-meeting";
 
-    try {
-        const formData = new FormData();
-        formData.append("file", blob, "meeting.webm");
+    const formData = new FormData();
+    formData.append("file", blob, "meeting.webm");
 
-        console.log("Uploading audio...");
+    const response = await fetch(BACKEND_URL, {
+        method: "POST",
+        body: formData
+    });
 
-        const response = await fetch(BACKEND_URL, {
-            method: "POST",
-            body: formData
-        });
+    const result = await response.json();
 
-        if (!response.ok) {
-            throw new Error("Backend failed");
-        }
-
-        const result = await response.json();
-        console.log("Backend response:", result);
-
-        if (!result.mom) {
-            console.error("MOM missing in response");
-            return;
-        }
-
-        //  SAVE ONLY MOM
-        await chrome.storage.local.set({
-            lastMOM: result.mom
-        });
-
-        console.log("MOM saved, opening dashboard");
-
-        //  OPEN DASHBOARD
+    chrome.storage.local.set({ lastMOM: result.mom }, () => {
         chrome.tabs.create({
             url: chrome.runtime.getURL("dashboard.html")
         });
-
-    } catch (err) {
-        console.error("Upload failed:", err);
-    }
+    });
 }
-

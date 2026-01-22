@@ -50,10 +50,6 @@ audio_engine = AudioEngine()
 # --------------------------------------------------
 @app.post("/analyze-meeting")
 async def analyze_meeting(file: UploadFile = File(...)):
-    """
-    Accepts meeting audio, generates transcript and MOM,
-    returns MOM for dashboard & PDF.
-    """
     filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_meeting.webm")
     audio_path = os.path.join(STORAGE, filename)
     json_path = audio_path.replace(".webm", ".json")
@@ -66,14 +62,16 @@ async def analyze_meeting(file: UploadFile = File(...)):
         # Whisper STT
         print("Running Whisper STT...")
         stt_result = audio_engine.process_audio(audio_path)
-        transcript = stt.get("text", "").strip()
+
+        transcript = ""
+        if stt_result and "text" in stt_result:
+            transcript = stt_result["text"].strip()
 
         if len(transcript) < 20:
-            transcript = "Meeting discussion detected but content was unclear. Please review audio manually."
-
-
-        if not transcript:
-            raise ValueError("Empty transcript generated")
+            transcript = (
+                "Meeting discussion detected but speech was unclear or partially untranslated. "
+                "Manual review is recommended."
+            )
 
         # Generate MOM
         print("Generating MOM...")
@@ -102,9 +100,6 @@ async def analyze_meeting(file: UploadFile = File(...)):
 # --------------------------------------------------
 @app.get("/meetings")
 async def list_meetings():
-    """
-    Returns all past meetings with MOM if available.
-    """
     try:
         meetings = []
         files = sorted(os.listdir(STORAGE), reverse=True)
