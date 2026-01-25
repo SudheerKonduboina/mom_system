@@ -1,4 +1,7 @@
 import torchaudio
+from app.pdf import extract_text_from_pdf
+from app.mom_generator import generate_mom_from_transcript
+
 if not hasattr(torchaudio, "set_audio_backend"):
     torchaudio.set_audio_backend = lambda x: None
 
@@ -135,3 +138,27 @@ async def list_meetings():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+
+@app.post("/analyze-pdf")
+async def analyze_pdf(file: UploadFile = File(...)):
+    pdf_path = os.path.join(STORAGE, file.filename)
+
+    with open(pdf_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    # 1️⃣ Extract text from PDF
+    extracted_text = extract_text_from_pdf(pdf_path)
+
+    if len(extracted_text.strip()) < 20:
+        raise HTTPException(status_code=400, detail="PDF text too short")
+
+    # 2️⃣ Generate MOM from extracted text
+    mom = generate_mom_from_transcript(extracted_text)
+
+    # 3️⃣ Return MOM (same structure as audio)
+    return {
+        "source": "pdf",
+        "mom": mom,
+        "raw_text": extracted_text
+    }
+
