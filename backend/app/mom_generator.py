@@ -1,3 +1,4 @@
+
 from datetime import datetime
 
 def generate_mom_from_transcript(transcript: str) -> dict:
@@ -55,9 +56,166 @@ def generate_mom_from_transcript(transcript: str) -> dict:
             )
 
         discussions.append(s)
+=======
+import re
+from datetime import datetime
+from collections import Counter
+
+
+# -----------------------------
+# CLEAN TRANSCRIPT
+# -----------------------------
+def clean_transcript(text):
+
+    # remove repeating loops
+    text = re.sub(r'\b(\w+)( \1\b)+', r'\1', text)
+
+    # remove filler words
+    text = re.sub(r'\b(um|uh|hmm|yeah|okay)\b', '', text, flags=re.I)
+
+    # remove extra spaces
+    text = re.sub(r'\s+', ' ', text)
+
+    return text.strip()
+
+
+# -----------------------------
+# SENTENCE SPLITTER
+# -----------------------------
+def split_sentences(text):
+
+    sentences = re.split(r'[.?!]', text)
+
+    cleaned = []
+
+    for s in sentences:
+
+        s = s.strip()
+
+        if len(s) > 10:
+            cleaned.append(s)
+
+    return cleaned
+
+
+# -----------------------------
+# PARTICIPANT DETECTOR
+# -----------------------------
+def extract_participants(text):
+
+    # detect full names
+    full_names = re.findall(r'\b[A-Z][a-z]+ [A-Z][a-z]+\b', text)
+
+    # detect frequent capital words
+    words = re.findall(r'\b[A-Z][a-z]{3,}\b', text)
+
+    freq = Counter(words)
+
+    for w, c in freq.items():
+
+        if c >= 3:
+            full_names.append(w)
+
+    stop_words = {
+        "Meeting","Discussion","Today",
+        "India","Thanks","Hello","Sir"
+    }
+
+    participants = [
+        n for n in full_names if n not in stop_words
+    ]
+
+    return list(set(participants))[:6]
+
+
+# -----------------------------
+# ACTION ITEM DETECTOR
+# -----------------------------
+def detect_actions(sentences):
+
+    actions = []
+
+    keywords = [
+        "will",
+        "need to",
+        "must",
+        "should",
+        "complete",
+        "prepare",
+        "submit",
+        "assign"
+    ]
+
+    for s in sentences:
+
+        if any(k in s.lower() for k in keywords):
+
+            actions.append({
+                "task": s,
+                "owner": "To be assigned",
+                "deadline": "TBD"
+            })
+
+    return actions
+
+
+# -----------------------------
+# DECISION DETECTOR
+# -----------------------------
+def detect_decisions(sentences):
+
+    decisions = []
+
+    keywords = [
+        "decided",
+        "agreed",
+        "approved",
+        "finalized"
+    ]
+
+    for s in sentences:
+
+        if any(k in s.lower() for k in keywords):
+
+            decisions.append(s)
+
+    return decisions
+
+
+# -----------------------------
+# MOM GENERATOR
+# -----------------------------
+def generate_mom_from_transcript(transcript):
+
+    transcript = clean_transcript(transcript)
+
+    sentences = split_sentences(transcript)
+
+    participants = extract_participants(transcript)
+
+    agenda = (
+        sentences[0]
+        if sentences
+        else "General meeting discussion"
+    )
+
+    discussions = sentences[:6]
+
+    decisions = detect_decisions(sentences)
+
+    actions = detect_actions(sentences)
+
+    conclusion = (
+        sentences[-1]
+        if sentences
+        else "Meeting concluded."
+    )
+>>>>>>> 939e520 (Updated whisper translation and MOM generation logic)
 
     return {
+
         "meetDate": datetime.now().strftime("%d %b %Y, %I:%M %p"),
+
         "participants": [],
         "agenda": "Dependency Review & Code Quality Discussion",
 
@@ -96,3 +254,20 @@ def _empty_mom(reason: str):
         "risks": "N/A",
         "conclusion": "Insufficient data to generate structured MOM."
     }
+
+
+        "participants": participants,
+
+        "agenda": agenda,
+
+        "key_discussions": discussions,
+
+        "decisions": decisions,
+
+        "action_items": actions,
+
+        "risks": "No major risks identified.",
+
+        "conclusion": conclusion
+    }
+
