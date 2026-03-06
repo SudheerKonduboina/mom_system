@@ -1,32 +1,51 @@
 {
   "manifest_version": 3,
-  "name": "AI Meeting Intelligence MOM",
-  "version": "1.0",
-  "description": "Captures tab audio and generates intelligent meeting minutes.",
+  "name": "AI Meeting Intelligence",
+  "version": "2.0",
+  "description": "AI-powered meeting recorder with real-time transcription, speaker identification, and intelligent MOM generation. Supports Google Meet, Zoom, and Teams.",
   "permissions": [
     "tabCapture",
-    "offscreen",
+    "activeTab",
     "storage",
-    "tabs",
-    "activeTab"
+    "offscreen",
+    "tabs"
   ],
   "host_permissions": [
+    "http://127.0.0.1:8000/*",
     "http://localhost:8000/*",
-    "http://127.0.0.1:8000/*"
+    "ws://127.0.0.1:8000/*",
+    "ws://localhost:8000/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "action": {
-    "default_popup": "popup.html"
-  },
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src http://localhost:8000 http://127.0.0.1:8000 data: blob:;"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["dashboard.html"],
-      "matches": ["<all_urls>"]
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
     }
-  ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*",
+        "https://*.zoom.us/*",
+        "https://teams.microsoft.com/*",
+        "https://teams.live.com/*"
+      ],
+      "js": [
+        "platform_detector.js",
+        "meet_tracker.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
 }

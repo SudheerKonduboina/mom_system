@@ -1,21 +1,51 @@
 # Python
-venv/
 __pycache__/
-*.pyc
-*.pyo
-.env
-
-# Chrome Extension / Node
-node_modules/
+*.py[cod]
+*.so
+*.egg-info/
 dist/
+build/
+.eggs/
 
-# Generated audio & storage
-backend/storage/
-*.webm
+# Environment
+.env
+*.env
 
-# Logs
-*.log
+# Storage & Database
+storage/
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Audio files
+*.webm
+*.wav
+*.mp3
+*.flac
+
+# Logs
+*.log
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Node
+node_modules/
+
+# Test
+.pytest_cache/
+htmlcov/
+.coverage

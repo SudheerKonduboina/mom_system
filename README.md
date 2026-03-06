@@ -43,12 +43,27 @@ The server will be live at http://127.0.0.1:8000.
 │   ├── app/
 │   │   ├── main.py            # FastAPI Routes & Storage Config
 │   │   ├── audio_engine.py    # Whisper STT Logic
-│   │   └── nlp_processor.py   # Regex MOM Extraction
+│   │   └── nlp_processor.py    # Regex MOM Extraction
+|   |   |__ ai_mom.py
+|   |   |__ mom_generator.py
+|   |   |__ Schema.py
+|   |   |__ utile.py                     
 │   ├── storage/               # PERMANENT AUDIO FILES (.webm)
-│   └── venv/                  # Python Environment
+│   └── venv/           # Python Environment    
+|   |__ .env    
+|   |__ requirement.txt           
 └── extension/
-    ├── manifest.json          # Extension Permissions
-    ├── popup.html/js          # User Interface
-    ├── background.js          # Orchestrator (Service Worker)
-    └── offscreen.html/js      # Audio Recorder
+|   ├── manifest.json          # Extension Permissions
+|   ├── popup.html/js          # User Interface
+|   ├── background.js          # Orchestrator (Service Worker)
+|   └── offscreen.html/js 
+|   |__ dashboard.html     
+|   |__ dashboard.js
+|   |__extension/html2pdf.bundle.min.js
+|   |__ meet_tracker.js
+|
+|__ .gitignore
+|__ readme.md
+
+
 📝 TroubleshootingTranscription is slow: Whisper runs on your CPU by default. For faster results, ensure you have an NVIDIA GPU with CUDA installed."No Audio" error: Ensure you have selected the "Share Audio" checkbox if Chrome prompts you when capturing the tab.404/Connection Error: Ensure the FastAPI server is running before clicking "Stop" in the extension.

@@ -1,0 +1,261 @@
+PRD – AI Meeting Intelligence System
+1. Product Vision
+The system is an AI-powered meeting assistant that automatically captures live meetings from Google Meet, transcribes multilingual conversations, identifies speakers, extracts meeting insights, and generates structured Minutes of Meeting (MOM) in real time.
+The system eliminates manual note-taking and produces structured meeting intelligence automatically.
+2. Core Capabilities
+2.1 Live Streaming Transcription
+Goal
+Transcribe the meeting while it is happening, not after the meeting ends.
+Functional Requirements
+The system must:
+Capture live audio from the meeting tab
+Stream audio chunks to the backend
+Transcribe speech continuously
+Update transcript every few seconds
+Support bilingual speech
+Supported languages:
+Hindi
+English
+Hindi-English mixed (Hinglish)
+Implementation Architecture
+Audio streaming pipeline:
+Google Meet
+     ↓
+Chrome Tab Audio Capture
+     ↓
+Offscreen Recorder
+     ↓
+Audio Chunks (3–5 sec)
+     ↓
+WebSocket / Streaming API
+     ↓
+Backend AI Pipeline
+     ↓
+Live Transcript
+Recommended Model
+Use Whisper medium or large model.
+Reasons:
+Best multilingual accuracy
+Handles code-switching (Hindi + English)
+Good noise tolerance
+Configuration example:
+model = whisper.load_model("medium")
+task="translate"
+language=None
+3. Speaker Identification
+Goal
+Identify who is speaking in the meeting.
+Example transcript:
+John: We need to finish the deployment today.
+Alice: I will handle the backend changes.
+Rahul: I will update the documentation.
+Methods for Speaker Detection
+Method 1 — Participant Name Mapping (Simple)
+Use Google Meet participant list.
+When audio energy increases, assign speaker from active participant.
+Accuracy: Medium
+Method 2 — Speaker Diarization (Advanced)
+Use speaker diarization model.
+Recommended tools:
+pyannote.audio
+WhisperX
+Output example:
+Speaker_1: Hello everyone
+Speaker_2: Let's start the meeting
+Speaker_3: We need to review the roadmap
+Then map speakers to participant names.
+4. Real-Time MOM Generation
+Goal
+Generate meeting minutes during the meeting, not after.
+The AI continuously analyzes transcript chunks.
+MOM Components
+The system extracts:
+Agenda
+Project roadmap discussion
+Sprint planning
+Budget review
+Key Discussions
+Important discussion points.
+Decisions
+Deployment scheduled for Friday
+Budget approval granted
+Action Items
+Task: Update backend API
+Owner: Rahul
+Deadline: Monday
+Risks
+Potential delay in API deployment
+Conclusion
+Short summary of meeting outcome.
+5. AI Meeting Insights
+The system analyzes transcript for deeper insights.
+Insights Generated
+Sentiment Analysis
+Meeting tone:
+Positive
+Neutral
+Negative
+Topic Detection
+Example:
+Topics detected:
+AI Model Training
+Backend Deployment
+Product Launch
+Meeting Engagement Score
+Measures:
+speaking time distribution
+interruptions
+silence periods
+Example:
+Engagement Score: 78/100
+Speaking Time Analytics
+Example:
+John: 15 minutes
+Alice: 10 minutes
+Rahul: 5 minutes
+6. Hindi + English Mixed Audio Support
+Your requirement:
+audio will be hindi and english mix
+This is called code-switching speech recognition.
+Example speech:
+Aaj meeting mein we will discuss the deployment plan.
+Solution
+Use Whisper multilingual model.
+Recommended configuration:
+transcribe(
+  task="translate",
+  language=None
+)
+This:
+auto-detects language
+converts Hindi → English
+keeps English words
+Example output:
+Today in the meeting we will discuss the deployment plan.
+7. Accuracy Optimization
+To improve transcription accuracy:
+Upgrade Whisper Model
+Instead of:
+base
+Use:
+medium
+or
+large-v3
+Add Custom Prompt
+Example:
+initial_prompt="This is a business meeting discussing AI models, deployment, and project planning."
+This improves recognition.
+8. Automated Testing System
+Your requirement:
+it should do all kind of testing also
+Correct approach is AI pipeline testing.
+Testing Layers
+1. Audio Capture Testing
+Test:
+tab audio capture
+recording start/stop
+audio file integrity
+2. Transcription Accuracy Testing
+Test dataset:
+Hindi audio
+English audio
+Hinglish audio
+Background noise audio
+Metrics:
+Word Error Rate (WER)
+3. Speaker Detection Testing
+Test:
+Single speaker
+Multiple speakers
+Interruptions
+Overlapping speech
+4. MOM Generation Testing
+Check:
+valid JSON
+action item detection
+decision extraction
+summary accuracy
+5. End-to-End Testing
+Full system test:
+Meeting audio
+↓
+STT
+↓
+AI Analysis
+↓
+MOM generation
+↓
+Dashboard
+9. Error Detection System
+The system must detect:
+Low Audio Quality
+Example warning:
+Audio clarity low
+Some speech may not be transcribed correctly
+Missing Transcript
+If transcript < 20 words:
+Meeting speech unclear
+Manual review recommended
+AI Output Validation
+Verify JSON structure:
+meetDate
+participants
+agenda
+key_discussions
+decisions
+action_items
+risks
+conclusion
+10. Final System Workflow
+Complete pipeline:
+Google Meet
+     ↓
+Chrome Extension
+     ↓
+Live Audio Capture
+     ↓
+Streaming Audio Chunks
+     ↓
+Backend API
+     ↓
+Whisper Transcription
+     ↓
+Speaker Diarization
+     ↓
+AI Meeting Intelligence
+     ↓
+Real-time MOM Generation
+     ↓
+Dashboard + PDF Export
+11. Final Output Example
+Meeting Summary
+Agenda
+Discuss AI meeting system architecture
+Participants
+John
+Alice
+Rahul
+Key Discussions
+Improving transcription accuracy
+Integrating speaker diarization
+Decisions
+Upgrade Whisper model to medium
+Action Items
+Rahul → implement diarization → Friday
+Alice → improve dashboard UI → Monday
+Risks
+GPU performance limitations
+Conclusion
+Team agreed to move to real-time transcription pipeline.
+12. Project Complexity Level
+Your system becomes a full AI SaaS product.
+Complexity level:
+Beginner project ❌
+Intermediate project ❌
+Advanced AI system ✅
+13. Real Products Similar to This
+Similar systems:
+Otter.ai
+Fireflies.ai
+Notion AI meeting notes
+Your project is basically a mini version of these tools.

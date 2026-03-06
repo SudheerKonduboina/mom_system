@@ -1,76 +1,457 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
-    <title>Edit Meeting Minutes</title>
-    <script src="html2pdf.bundle.min.js"></script>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 20px; background-color: #f4f7f6; }
-        
-        .no-print { 
-            background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px;
-            display: flex; justify-content: space-between; align-items: center;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05); position: sticky; top: 10px; z-index: 100;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meeting Intelligence Dashboard</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-        .document { background: white; padding: 50px; border-radius: 2px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); min-height: 1000px; }
-        
-        /* Editable area styling */
-        [contenteditable="true"]:hover { background-color: #f0f7ff; outline: 1px dashed #3498db; }
-        [contenteditable="true"]:focus { background-color: #fff; outline: 2px solid #3498db; }
+    :root {
+      --bg: #0a0a1a;
+      --surface: #13132b;
+      --surface2: #1a1a3e;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #e0e0f0;
+      --text-dim: #8888aa;
+      --accent: #4fc3f7;
+      --success: #66bb6a;
+      --warning: #ffb74d;
+      --danger: #ef5350;
+      --purple: #ab47bc;
+    }
 
-        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
-        h2 { color: #2980b9; margin-top: 30px; border-left: 5px solid #3498db; padding-left: 15px; }
-        
-        .btn-download { background: #27ae60; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .btn-download:hover { background: #219150; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        table th, table td { border: 1px solid #dfe6e9; padding: 12px; text-align: left; }
-        table th { background-color: #34495e; color: white; }
-    </style>
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    header {
+      text-align: center;
+      padding: 32px 0 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+
+    header h1 {
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    header .subtitle {
+      color: var(--text-dim);
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    header .meeting-meta {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    header .meta-item {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    header .meta-item span {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* ─── Warnings ─────────────────────────── */
+    .warnings-banner {
+      margin-bottom: 20px;
+    }
+
+    .warning-item {
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .warning-item.warning {
+      background: rgba(255, 183, 77, 0.15);
+      border-left: 3px solid var(--warning);
+      color: var(--warning);
+    }
+
+    .warning-item.error {
+      background: rgba(239, 83, 80, 0.15);
+      border-left: 3px solid var(--danger);
+      color: var(--danger);
+    }
+
+    /* ─── Cards ─────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card h2 .icon {
+      font-size: 18px;
+    }
+
+    /* ─── Insights Grid ─────────────────────── */
+    .insights-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .insight-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .insight-card .label {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .insight-card .value {
+      font-size: 24px;
+      font-weight: 700;
+      margin: 6px 0;
+    }
+
+    .insight-card .value.positive {
+      color: var(--success);
+    }
+
+    .insight-card .value.negative {
+      color: var(--danger);
+    }
+
+    .insight-card .value.neutral {
+      color: var(--accent);
+    }
+
+    /* ─── Topics ─────────────────────────────── */
+    .topics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .topic-tag {
+      background: rgba(79, 195, 247, 0.15);
+      color: var(--accent);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    /* ─── Speaking Time ──────────────────────── */
+    .speaker-bar {
+      margin-bottom: 10px;
+    }
+
+    .speaker-bar .bar-label {
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .speaker-bar .bar-track {
+      height: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .speaker-bar .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+
+    /* ─── Lists ─────────────────────────────── */
+    .list-item {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+
+    .list-item:last-child {
+      border-bottom: none;
+    }
+
+    .list-item strong {
+      color: var(--accent);
+    }
+
+    /* ─── Action Items ───────────────────────── */
+    .action-item {
+      padding: 12px;
+      margin-bottom: 8px;
+      background: var(--surface2);
+      border-radius: 8px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .action-priority {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-top: 6px;
+      flex-shrink: 0;
+    }
+
+    .action-priority.high {
+      background: var(--danger);
+    }
+
+    .action-priority.medium {
+      background: var(--warning);
+    }
+
+    .action-priority.low {
+      background: var(--success);
+    }
+
+    .action-meta {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    .action-status {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    .action-status.pending {
+      background: rgba(255, 183, 77, 0.2);
+      color: var(--warning);
+    }
+
+    .action-status.completed {
+      background: rgba(102, 187, 106, 0.2);
+      color: var(--success);
+    }
+
+    .action-status.overdue {
+      background: rgba(239, 83, 80, 0.2);
+      color: var(--danger);
+    }
+
+    /* ─── Speaker Transcript ─────────────────── */
+    .speaker-line {
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+
+    .speaker-name {
+      font-weight: 600;
+      color: var(--purple);
+    }
+
+    /* ─── Attendance ─────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      color: var(--text-dim);
+      border-bottom: 2px solid var(--border);
+      font-weight: 600;
+    }
+
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ─── Buttons ─────────────────────────────── */
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      padding: 20px 0;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+    }
+
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    @media print {
+      body {
+        background: white;
+        color: black;
+      }
+
+      .card {
+        border: 1px solid #ddd;
+      }
+
+      .btn-group {
+        display: none;
+      }
+    }
+  </style>
 </head>
+
 <body>
+  <div class="container">
+    <header>
+      <h1 id="meetingTitle">📋 Meeting Intelligence Report</h1>
+      <div class="subtitle" id="meetingSubtitle">Generated by AI MOM System</div>
+      <div class="meeting-meta">
+        <div class="meta-item">Date: <span id="metaDate">—</span></div>
+        <div class="meta-item">Platform: <span id="metaPlatform">—</span></div>
+        <div class="meta-item">Participants: <span id="metaParticipants">—</span></div>
+      </div>
+    </header>
 
-    <div class="no-print">
-        <span><b>Editor Mode:</b> You can click and edit any text below.</span>
-        <button id="downloadPdf" class="btn-download">Download as PDF</button>
+    <!-- Warnings -->
+    <div class="warnings-banner" id="warningsBanner"></div>
+
+    <!-- Insights -->
+    <div class="insights-grid" id="insightsGrid"></div>
+
+    <!-- Topics -->
+    <div class="card" id="topicsCard" style="display:none;">
+      <h2><span class="icon">🏷️</span> Key Topics</h2>
+      <div class="topics" id="topicsTags"></div>
     </div>
 
-    <div class="document" id="mom-content">
-        <h1 contenteditable="true">Minutes of Meeting</h1>
-        
-        <div class="meta-grid">
-            <p><b>Meeting Details:</b> <span id="meetDate" contenteditable="true">-</span></p>
-            <p><b>Participants:</b> <span id="participants" contenteditable="true">-</span></p>
-            <p><b>Agenda:</b> <span id="agenda" contenteditable="true">-</span></p>
-        </div>
-
-        <h2>Key Discussions</h2>
-        <div id="discussions" contenteditable="true"></div>
-
-        <h2>Decisions</h2>
-        <ul id="decisions" contenteditable="true"></ul>
-
-        <h2>Action Items</h2>
-        <table id="actionTable">
-            <thead>
-                <tr>
-                    <th>Task</th>
-                    <th>Owner</th>
-                    <th>Deadline</th>
-                </tr>
-            </thead>
-            <tbody id="actionBody" contenteditable="true">
-                </tbody>
-        </table>
-
-        <h2>Risks & Follow-ups</h2>
-        <div id="risks" contenteditable="true" style="background: #fff5f5; padding: 15px; border-left: 5px solid #e74c3c;"></div>
-
-        <h2>Conclusion</h2>
-        <p id="conclusion" contenteditable="true"></p>
+    <!-- Speaking Time -->
+    <div class="card" id="speakingTimeCard" style="display:none;">
+      <h2><span class="icon">📊</span> Speaking Time Analytics</h2>
+      <div id="speakingTimeBars"></div>
     </div>
 
-    <script src="dashboard.js"></script>
+    <!-- Key Discussions -->
+    <div class="card">
+      <h2><span class="icon">💬</span> Key Discussions</h2>
+      <div id="discussions"></div>
+    </div>
+
+    <!-- Decisions -->
+    <div class="card">
+      <h2><span class="icon">✅</span> Decisions</h2>
+      <div id="decisions"></div>
+    </div>
+
+    <!-- Action Items -->
+    <div class="card">
+      <h2><span class="icon">📌</span> Action Items</h2>
+      <div id="actionItems"></div>
+    </div>
+
+    <!-- Risks -->
+    <div class="card">
+      <h2><span class="icon">⚠️</span> Risks</h2>
+      <div id="risks"></div>
+    </div>
+
+    <!-- Conclusion -->
+    <div class="card">
+      <h2><span class="icon">📝</span> Conclusion</h2>
+      <p id="conclusion">—</p>
+    </div>
+
+    <!-- Speaker Transcript -->
+    <div class="card" id="speakerTranscriptCard" style="display:none;">
+      <h2><span class="icon">🗣️</span> Speaker-Labeled Transcript</h2>
+      <div id="speakerTranscript"></div>
+    </div>
+
+    <!-- Attendance Log -->
+    <div class="card">
+      <h2><span class="icon">👥</span> Attendance Log</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Participant</th>
+            <th>Event</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody id="attendanceBody"></tbody>
+      </table>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="downloadPDF()">📥 Download PDF</button>
+      <button class="btn btn-secondary" onclick="window.print()">🖨️ Print</button>
+    </div>
+  </div>
+
+  <script src="dashboard.js"></script>
 </body>
+
 </html>
