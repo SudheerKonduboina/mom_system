@@ -108,7 +108,10 @@ async def startup_event():
     
     def load():
         try:
+            logger.info("Startup pre-loading: Whisper")
             model_manager.get_whisper()
+            logger.info("Startup pre-loading: Diarizer")
+            model_manager.get_diarizer()
         except Exception as e:
             print(f"Startup pre-load warning: {e}")
 
@@ -133,10 +136,19 @@ action_tracker = ActionTracker()
 @app.get("/health")
 async def health():
     from app.model_manager import model_manager
+    metrics = model_manager.get_performance_metrics()
+    
+    # If not loaded, trigger initialization (will happen in background if already running)
+    if not metrics["whisper_loaded"] or not metrics["diarizer_loaded"]:
+        # We don't block here, but we ensure the loading is triggered
+        model_manager.get_whisper()
+        model_manager.get_diarizer()
+        metrics = model_manager.get_performance_metrics()
+
     return {
         "status": "ok",
         "time": datetime.utcnow().isoformat() + "Z",
-        "models": model_manager.get_performance_metrics(),
+        "models": metrics,
     }
 
 # ---------------------------------------------------------------------------
@@ -233,10 +245,19 @@ def _process_meeting(meeting_id: str, audio_path: str,
         )
 
     # ─── Step 2: Speaker Diarization ────────────────────────────
-    diarization_segments = diarizer.diarize(audio_path)
-    aligned_segments = diarizer.align_with_transcript(diarization_segments, whisper_segments)
-    speaking_times = diarizer.get_speaking_times(aligned_segments)
-    speaker_transcript = diarizer.build_speaker_transcript(aligned_segments)
+    if not whisper_segments or len(transcript.strip()) < 5:
+        # Skip diarization if there is no speech or transcript is extremely short
+        logger.warning(f"Skipping diarization for {meeting_id} due to lack of speech.")
+        diarization_segments = []
+        aligned_segments = []
+        speaking_times = {}
+        speaker_transcript = transcript
+    else:
+        processed_audio_path = stt_result.get("preprocessing", {}).get("processed_path", audio_path)
+        diarization_segments = diarizer.diarize(processed_audio_path)
+        aligned_segments = diarizer.align_with_transcript(diarization_segments, whisper_segments)
+        speaking_times = diarizer.get_speaking_times(aligned_segments)
+        speaker_transcript = diarizer.build_speaker_transcript(aligned_segments)
 
     # ─── Step 3: Speaker Name Mapping ───────────────────────────
     speaker_ids = list(set(s.get("speaker", "") for s in aligned_segments if s.get("speaker")))

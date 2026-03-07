@@ -83,6 +83,7 @@ class AudioEngine:
                 "quality_score": preprocess_result.get("quality_score", 0),
                 "duration_sec": preprocess_result.get("duration_sec", 0),
                 "warnings": preprocess_result.get("warnings", []),
+                "processed_path": processed_path
             }
         }
 

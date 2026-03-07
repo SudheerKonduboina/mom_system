@@ -233,10 +233,18 @@ async function sendToBackend(blob) {
     formData.append("file", blob, "meeting.webm");
     formData.append("attendance_events", JSON.stringify(events || []));
 
-    const url = window.location ? window.location.href : "";
+    // Platform detection (Note: window is NOT defined in Service Workers)
     let platform = "google_meet";
-    if (url.includes("zoom")) platform = "zoom";
-    else if (url.includes("teams")) platform = "teams";
+    try {
+      if (activeMeetTabId) {
+        const tab = await chrome.tabs.get(activeMeetTabId);
+        const tabUrl = tab.url || "";
+        if (tabUrl.includes("zoom")) platform = "zoom";
+        else if (tabUrl.includes("teams")) platform = "teams";
+      }
+    } catch (e) {
+      console.warn("Platform detection failed, defaulting to google_meet:", e);
+    }
     formData.append("platform", platform);
 
     console.log("Sending to backend:", `${BACKEND_REST}/analyze-meeting`);

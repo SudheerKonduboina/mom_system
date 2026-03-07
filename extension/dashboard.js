@@ -33,6 +33,9 @@ document.addEventListener("DOMContentLoaded", () => {
       renderAttendance(attendance);
     }
   );
+
+  document.getElementById("btnDownloadPDF")?.addEventListener("click", downloadPDF);
+  document.getElementById("btnPrint")?.addEventListener("click", () => window.print());
 });
 
 function renderMeta(mom, result) {

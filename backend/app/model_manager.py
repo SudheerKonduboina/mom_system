@@ -13,6 +13,18 @@ except ImportError:
 
 from app.config import settings
 
+# Monkeypatch huggingface_hub to preserve compatibility between pyannote.audio and new hf_hub versions
+try:
+    import huggingface_hub
+    original_hf_hub_download = huggingface_hub.hf_hub_download
+    def patched_hf_hub_download(*args, **kwargs):
+        if 'use_auth_token' in kwargs:
+            kwargs['token'] = kwargs.pop('use_auth_token')
+        return original_hf_hub_download(*args, **kwargs)
+    huggingface_hub.hf_hub_download = patched_hf_hub_download
+except Exception:
+    pass
+
 logger = logging.getLogger("ModelManager")
 
 
@@ -71,22 +83,28 @@ class ModelManager:
         model_size = self._select_whisper_size()
         logger.info(f"Loading Whisper model: {model_size} on {self.device}")
 
-        import whisper
-        self._whisper_model = whisper.load_model(model_size, device=self.device)
-        self._whisper_loaded_at = time.time()
+        try:
+            import whisper
+            self._whisper_model = whisper.load_model(model_size, device=self.device)
+            self._whisper_loaded_at = time.time()
 
-        # Apply quantization for CPU
-        if self.device == "cpu" and settings.USE_QUANTIZATION:
-            try:
-                self._whisper_model = torch.quantization.quantize_dynamic(
-                    self._whisper_model, {torch.nn.Linear}, dtype=torch.qint8
-                )
-                logger.info("Applied INT8 quantization for CPU")
-            except Exception as e:
-                logger.warning(f"Quantization failed: {e}")
+            # Apply quantization for CPU
+            if self.device == "cpu" and settings.USE_QUANTIZATION:
+                try:
+                    self._whisper_model = torch.quantization.quantize_dynamic(
+                        self._whisper_model, {torch.nn.Linear}, dtype=torch.qint8
+                    )
+                    logger.info("Applied INT8 quantization for CPU")
+                except Exception as e:
+                    logger.warning(f"Quantization failed: {e}")
 
-        logger.info(f"Whisper '{model_size}' loaded successfully on {self.device}")
-        return self._whisper_model
+            logger.info(f"Whisper '{model_size}' loaded successfully on {self.device}")
+            return self._whisper_model
+        except Exception as e:
+            logger.error(f"Failed to load Whisper model: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
 
     def _select_whisper_size(self) -> str:
         """Auto-select model size based on hardware."""
@@ -138,6 +156,8 @@ class ModelManager:
             return self._diarizer
         except Exception as e:
             logger.error(f"Failed to load diarization pipeline: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
 
     # -----------------------------------------------------------------------
@@ -171,6 +191,13 @@ class ModelManager:
         if torch is not None and torch.cuda.is_available():
             torch.cuda.empty_cache()
 
+    def initialize_all(self):
+        """Force initialization of all models."""
+        logger.info("Initializing all models...")
+        self.get_whisper()
+        self.get_diarizer()
+        return self.get_performance_metrics()
+
     def get_performance_metrics(self) -> dict:
         """Return current model status and memory usage."""
         return {
@@ -178,6 +205,8 @@ class ModelManager:
             "diarizer_loaded": self._diarizer is not None,
             "device": self.device,
             "gpu": self.gpu_info,
+            "whisper_status": "loaded" if self._whisper_model else "not_loaded",
+            "diarizer_status": "loaded" if self._diarizer else "not_loaded"
         }
 
 

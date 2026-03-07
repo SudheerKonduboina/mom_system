@@ -124,18 +124,53 @@ async def _process_chunk(chunk_data: bytes, session: StreamingSession,
                           speaker_detector) -> dict | None:
     """Process a single audio chunk: transcribe and detect speaker changes."""
     try:
-        # Save chunk to temp file for Whisper
+        # Save accumulated audio to temp file for Whisper
+        full_audio = session.get_accumulated_audio()
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
-            tmp.write(chunk_data)
+            tmp.write(full_audio)
             tmp_path = tmp.name
+
+        import subprocess
+        import os
+
+        # Get total duration of accumulated audio
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", 
+             "-of", "default=noprint_wrappers=1:nokey=1", tmp_path],
+            capture_output=True, text=True
+        )
+        try:
+            total_duration = float(probe.stdout.strip())
+        except ValueError:
+            total_duration = 0.0
+
+        processed_time = getattr(session, "processed_time", 0.0)
+        wav_path = tmp_path + ".wav"
+
+        if total_duration > processed_time:
+            # Extract new chunk using ffmpeg
+            cmd = [
+                "ffmpeg", "-y", "-ss", str(processed_time), "-i", tmp_path,
+                "-ar", "16000", "-ac", "1", wav_path
+            ]
+            subprocess.run(cmd, capture_output=True)
+            session.processed_time = total_duration
+        else:
+            os.unlink(tmp_path)
+            return None
 
         # Transcribe in thread pool to not block event loop
         loop = asyncio.get_event_loop()
         transcript = await loop.run_in_executor(
-            None, _transcribe_chunk, tmp_path
+            None, _transcribe_chunk, wav_path
         )
 
         if not transcript or len(transcript.strip()) < 3:
+            try:
+                os.unlink(tmp_path)
+                os.unlink(wav_path)
+            except:
+                pass
             return None
 
         session.partial_transcripts.append(transcript)
@@ -144,15 +179,15 @@ async def _process_chunk(chunk_data: bytes, session: StreamingSession,
         speaker_info = {"is_speaking": True, "current_speaker": "Speaker"}
         try:
             import librosa
-            audio, sr = librosa.load(tmp_path, sr=16000, mono=True)
+            audio, sr = librosa.load(wav_path, sr=16000, mono=True)
             speaker_info = speaker_detector.detect_speaker_change(audio, sr)
         except Exception:
             pass
 
-        # Clean up temp file
-        import os
+        # Clean up temp files
         try:
             os.unlink(tmp_path)
+            os.unlink(wav_path)
         except Exception:
             pass
 

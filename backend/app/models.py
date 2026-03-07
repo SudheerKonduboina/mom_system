@@ -75,7 +75,7 @@ class MOMRecord(Base):
     decisions = Column(JSON, default=list)
     risks = Column(JSON, default=list)
     conclusion = Column(Text, default="")
-    sentiment = Column(String(50), default="neutral")         # positive, neutral, negative
+    sentiment = Column(JSON, default=dict)         # positive, neutral, negative
     topics = Column(JSON, default=list)
     engagement_score = Column(Float, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
