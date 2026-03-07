@@ -68,8 +68,23 @@ function readParticipantNames() {
     try {
       const elements = document.querySelectorAll(selector);
       for (const node of elements) {
-        const txt = (node.innerText || node.textContent || "").trim();
+        // Handle Meet's text masking
+        let txt = "";
+        if (node.getAttribute('data-self-name')) {
+          txt = node.getAttribute('data-self-name');
+        } else if (node.getAttribute('data-participant-id')) {
+          // Traverse down to find actual text if this is a wrapper
+          const span = node.querySelector('span[dir="auto"], span[class]');
+          if (span) txt = span.innerText || span.textContent;
+          else txt = node.innerText || node.textContent;
+        } else {
+          txt = node.innerText || node.textContent;
+        }
+
+        txt = (txt || "").trim();
         if (!txt) continue;
+
+        // Grab just the first line (name)
         const candidate = txt.split("\n")[0].trim();
         if (isValidName(candidate)) {
           names.add(candidate);
@@ -80,7 +95,7 @@ function readParticipantNames() {
     }
   }
 
-  // Self name detection
+  // Self name detection explicit
   try {
     const selfEl = document.querySelector('[data-self-name]');
     if (selfEl) {
@@ -98,15 +113,18 @@ function isValidName(name) {
   if (!name || name.length < 2 || name.length > 50) return false;
   const lower = name.toLowerCase();
 
-  const badStrings = [
-    "presenting", "microphone", "camera", "host", "mute", "unmute",
-    "pin", "more options", "people", "activities", "chat", "hand",
-    "meeting details", "waiting", "admit", "deny", "you", "(you)",
-    "raise hand", "lower hand", "turn on", "turn off", "screen",
-    "recording", "caption", "layout", "settings"
+  const badExactStrings = [
+    "you", "(you)", "presentation", "presenting", "microphone", "camera", "host",
+    "meeting details", "recording", "caption", "settings"
   ];
 
-  if (badStrings.some(b => lower.includes(b))) return false;
+  if (badExactStrings.includes(lower)) return false;
+
+  const badIncludes = [
+    "turn on", "turn off", "raise hand", "lower hand", "more options"
+  ];
+
+  if (badIncludes.some(b => lower.includes(b))) return false;
   if (/^\d+[:.]?\d*$/.test(name)) return false;
   if (name.length > 40) return false;
 
