@@ -171,14 +171,18 @@ def save_mom(meeting_id: str, mom_data: Dict[str, Any]):
     try:
         mom = MOMRecord(
             meeting_id=meeting_id,
+            meeting_title=mom_data.get("meeting_title", "Meeting Summary"),
+            date=mom_data.get("date", datetime.now().strftime("%Y-%m-%d")),
+            participants=mom_data.get("participants", []),
             agenda=mom_data.get("agenda", "Meeting Summary"),
+            summary=mom_data.get("summary", ""),
+            duration=mom_data.get("duration", "0s"),
+            total_attendees=mom_data.get("total_attendees", 0),
+            attendance_log=mom_data.get("attendance_log", []),
             key_discussions=mom_data.get("key_discussions", []),
             decisions=mom_data.get("decisions", []),
-            risks=mom_data.get("risks", []),
+            risks_followups=mom_data.get("risks_followups", []),
             conclusion=mom_data.get("conclusion", ""),
-            sentiment=mom_data.get("sentiment", "neutral"),
-            topics=mom_data.get("topics", []),
-            engagement_score=mom_data.get("engagement_score", 0),
         )
         db.add(mom)
         db.commit()
@@ -199,8 +203,7 @@ def save_action_items(meeting_id: str, items: List[Dict]):
                 task=item.get("task", ""),
                 owner=item.get("owner", "TBD"),
                 deadline=item.get("deadline", "TBD"),
-                priority=item.get("priority", "medium"),
-                status="pending",
+                status=item.get("status", "Pending")
             )
             db.add(ai)
         db.commit()
@@ -223,7 +226,7 @@ def get_action_items(status: str = None, owner: str = None,
         return [
             {
                 "id": a.id, "meeting_id": a.meeting_id, "task": a.task,
-                "owner": a.owner, "deadline": a.deadline, "priority": a.priority,
+                "owner": a.owner, "deadline": a.deadline,
                 "status": a.status, "created_at": a.created_at.isoformat() if a.created_at else None,
             }
             for a in items
@@ -320,14 +323,18 @@ def _meeting_to_dict(db: Session, meeting: Meeting) -> Dict[str, Any]:
     mom = db.query(MOMRecord).filter(MOMRecord.meeting_id == meeting.meeting_id).first()
     if mom:
         result["mom"] = {
+            "meeting_title": mom.meeting_title,
+            "date": mom.date,
+            "participants": mom.participants,
             "agenda": mom.agenda,
+            "summary": mom.summary,
+            "duration": mom.duration,
+            "total_attendees": mom.total_attendees,
+            "attendance_log": mom.attendance_log,
             "key_discussions": mom.key_discussions,
             "decisions": mom.decisions,
-            "risks": mom.risks,
-            "conclusion": mom.conclusion,
-            "sentiment": mom.sentiment,
-            "topics": mom.topics,
-            "engagement_score": mom.engagement_score,
+            "risks_followups": mom.risks_followups,
+            "conclusion": mom.conclusion
         }
 
     # Participants
@@ -344,7 +351,7 @@ def _meeting_to_dict(db: Session, meeting: Meeting) -> Dict[str, Any]:
     actions = db.query(ActionItem).filter(ActionItem.meeting_id == meeting.meeting_id).all()
     result["action_items"] = [
         {"id": a.id, "task": a.task, "owner": a.owner, "deadline": a.deadline,
-         "priority": a.priority, "status": a.status}
+         "status": a.status}
         for a in actions
     ]
 

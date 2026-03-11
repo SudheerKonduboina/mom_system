@@ -73,6 +73,11 @@ try:
 except Exception:
     handle_stream = None
 
+try:
+    from app.transcript_cleaner import clean_transcript
+except ImportError:
+    clean_transcript = lambda x: x  # Fallback no-op
+
 import app.database as db_module
 
 # ---------------------------------------------------------------------------
@@ -265,6 +270,67 @@ def _process_meeting(meeting_id: str, audio_path: str,
         e.get("name", "") for e in attendance
         if e.get("name") and e.get("type") == "PARTICIPANT_JOIN"
     ))
+    
+    # Generate Attendance Table Logic
+    attendance_log = []
+    tracking_sessions = {}
+    
+    for event in sorted(attendance, key=lambda x: x.get('at', '')):
+        name = event.get('name')
+        if not name:
+            continue
+            
+        ev_type = event.get('type')
+        ev_time = event.get('at')
+        
+        if ev_type == 'PARTICIPANT_JOIN':
+            if name not in tracking_sessions:
+                tracking_sessions[name] = {'join_time': ev_time, 'leave_time': None, 'total_duration_sec': 0, 'current_join': ev_time}
+            elif tracking_sessions[name]['current_join'] is None:
+                 tracking_sessions[name]['current_join'] = ev_time
+        
+        elif ev_type == 'PARTICIPANT_LEAVE':
+             if name in tracking_sessions and tracking_sessions[name]['current_join'] is not None:
+                  join_dt = datetime.fromisoformat(tracking_sessions[name]['current_join'].replace('Z', '+00:00'))
+                  leave_dt = datetime.fromisoformat(ev_time.replace('Z', '+00:00'))
+                  tracking_sessions[name]['total_duration_sec'] += (leave_dt - join_dt).total_seconds()
+                  tracking_sessions[name]['current_join'] = None
+                  tracking_sessions[name]['leave_time'] = ev_time
+                  
+    # Handle participants still explicitly tracked when meeting ends
+    end_time_str = datetime.utcnow().isoformat() + "Z"
+    for name, session in tracking_sessions.items():
+        if session['current_join'] is not None:
+             join_dt = datetime.fromisoformat(session['current_join'].replace('Z', '+00:00'))
+             leave_dt = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
+             session['total_duration_sec'] += (leave_dt - join_dt).total_seconds()
+             session['leave_time'] = end_time_str
+             
+        # Format duration string
+        mins = int(session['total_duration_sec'] // 60)
+        secs = int(session['total_duration_sec'] % 60)
+        dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+        
+        # Format to HH:MM based on the isoformat
+        fmt_join = ""
+        if session['join_time']:
+            try:
+                 fmt_join = datetime.fromisoformat(session['join_time'].replace('Z', '+00:00')).strftime("%H:%M")
+            except: pass
+        fmt_leave = ""
+        if session['leave_time']:
+            try:
+                 fmt_leave = datetime.fromisoformat(session['leave_time'].replace('Z', '+00:00')).strftime("%H:%M")
+            except: pass
+            
+        attendance_log.append({
+            "name": name,
+            "join_time": fmt_join,
+            "leave_time": fmt_leave,
+            "duration": dur_str
+        })
+    
+    total_attendees = len(attendance_log)
 
     speaker_map = speaker_mapper.map_speakers(
         speaker_ids, participant_names, aligned_segments, attendance
@@ -290,9 +356,13 @@ def _process_meeting(meeting_id: str, audio_path: str,
         list(all_participants), meeting_id
     )
 
-    # ─── Step 5: MOM Generation ─────────────────────────────────
+    # ─── Step 4.5: Clean Transcript ──────────────────────────────
     combined_transcript = speaker_transcript if speaker_transcript else transcript
-
+    
+    # Apply cleaner to remove "um", "uh", "like" before AI model processes it
+    combined_transcript = clean_transcript(combined_transcript)
+    
+    # ─── Step 5: MOM Generation ─────────────────────────────────
     if ai_generate_mom is not None:
         mom = ai_generate_mom(combined_transcript, context_prompt=context.get("context_prompt", ""))
     else:
@@ -301,10 +371,20 @@ def _process_meeting(meeting_id: str, audio_path: str,
     # Ensure participants are populated
     if not mom.get("participants") or mom["participants"] == []:
         mom["participants"] = list(all_participants)
+        
+    # Get duration from audio metadata earlier
+    duration = stt_result.get("metadata", {}).get("duration", 0) if stt_result else 0
+        
+    # Inject computed attendance items
+    mom["attendance_log"] = attendance_log
+    mom["total_attendees"] = total_attendees
+    
+    dur_mins = int(duration // 60)
+    dur_secs = int(duration % 60)
+    mom["duration"] = f"{dur_mins}m {dur_secs}s" if dur_mins > 0 else f"{dur_secs}s"
 
     # ─── Step 6: Meeting Insights ───────────────────────────────
     num_speakers = len(speaker_ids) or len(all_participants)
-    duration = stt_result.get("metadata", {}).get("duration", 0) if stt_result else 0
 
     insights = insights_engine.analyze(
         combined_transcript, speaking_times, num_speakers, duration
@@ -318,6 +398,10 @@ def _process_meeting(meeting_id: str, audio_path: str,
 
     # ─── Step 7: Action Item Tracking ───────────────────────────
     action_items = mom.get("action_items", [])
+    for act in action_items:
+        if "status" not in act:
+            act["status"] = "Pending"
+    
     enriched_actions = action_tracker.process_new_actions(
         meeting_id, action_items, context.get("pending_action_items", [])
     )
@@ -398,6 +482,46 @@ async def get_meeting(meeting_id: str):
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
     return meeting
+
+# ---------------------------------------------------------------------------
+# API: GET MEETING PDF (NEW)
+# ---------------------------------------------------------------------------
+try:
+    from app.pdf_generator import generate_mom_pdf
+except ImportError:
+    generate_mom_pdf = None
+
+from fastapi.responses import StreamingResponse
+
+@app.get("/meetings/{meeting_id}/pdf")
+async def get_meeting_pdf(meeting_id: str):
+    meeting = db_module.get_meeting(meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+        
+    mom_data = meeting.get("mom")
+    if not mom_data:
+        raise HTTPException(status_code=400, detail="MOM not generated for this meeting yet.")
+        
+    if not generate_mom_pdf:
+        raise HTTPException(status_code=500, detail="PDF generator module is not available.")
+        
+    try:
+        pdf_buffer = generate_mom_pdf(mom_data)
+        
+        # Format filename to be safe
+        safe_title = "".join([c if c.isalnum() else "_" for c in mom_data.get("meeting_title", "Meeting")])
+        safe_date = mom_data.get("date", "Unknown").replace("-", "")
+        filename = f"MOM_{safe_title}_{safe_date}.pdf"
+        
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 # ---------------------------------------------------------------------------
 # API: DELETE MEETING

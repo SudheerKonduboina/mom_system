@@ -19,27 +19,27 @@ SYSTEM = """You are an expert meeting assistant. Your task is to extract high-qu
 
 Guidelines:
 1. Accuracy: Only include facts mentioned in the transcript.
-2. Structure: Return STRICT JSON.
+2. Structure: Return STRICT JSON matching the target schema.
 3. Participants: Identify people speaking or mentioned.
-4. Action Items: Be specific. Format: { "task": "detailed description", "owner": "Name or TBD", "deadline": "Date or TBD", "priority": "high|medium|low" }.
-5. Key Discussions: Summarize the main points clearly.
-6. Sentiment: Classify overall meeting tone.
-7. Topics: Extract 3-5 key topics discussed.
+4. Action Items: Be specific. Format: { "task": "detailed description", "owner": "Name or TBD", "deadline": "Date or TBD", "status": "Pending" }.
+5. Key Discussions: Summarize the main points clearly. Convert the transcript into bullet points describing the topics.
+6. Summary: Include a meeting summary/insights, weaving in the overall meeting tone, sentiment, and engagement level, based on the transcript.
+7. Decisions: Extract specific phrases like "we decided", "final decision", "agreed that", "we will" to outline exactly what was decided.
 
 Required JSON Structure:
 {
-  "meetDate": "YYYY-MM-DD",
+  "meeting_title": "Short descriptive meeting title",
+  "date": "YYYY-MM-DD",
   "participants": ["Name1", "Name2"],
-  "agenda": "Short meeting title",
-  "key_discussions": ["Main point 1", "Main point 2"],
+  "agenda": "Topics of discussion",
+  "summary": "Meeting insights, sentiment, engagement level, and general tone.",
+  "key_discussions": ["Point 1", "Point 2"],
   "decisions": ["Decision 1", "Decision 2"],
   "action_items": [
-    {"task": "Extract specific task", "owner": "Name", "deadline": "TBD", "priority": "medium"}
+    {"task": "Extract specific task", "owner": "Name", "deadline": "TBD", "status": "Pending"}
   ],
-  "risks": ["Risk 1 or None"],
-  "conclusion": "Brief closing statement",
-  "sentiment": "positive|neutral|negative",
-  "topics_detected": ["Topic 1", "Topic 2"]
+  "risks_followups": ["Risk 1 or None"],
+  "conclusion": "Brief closing statement"
 }
 
 If the transcript is bilingual (e.g., Hindi/English), provide the summary in English.
@@ -48,17 +48,21 @@ Avoid filler words and repetitions."""
 
 def _fallback_mom(reason: str = "Needs review") -> Dict[str, Any]:
     return {
-        "meetDate": datetime.now().strftime("%Y-%m-%d"),
+        "meeting_title": "Meeting Summary",
+        "date": datetime.now().strftime("%Y-%m-%d"),
         "participants": [],
         "agenda": "Meeting Summary",
+        "summary": "Transcript too short or unclear.",
+        "duration": "0s",
+        "total_attendees": 0,
+        "attendance_log": [],
         "key_discussions": ["Transcript too short or unclear."],
         "decisions": [],
         "action_items": [],
-        "risks": ["Low audio clarity"],
-        "conclusion": reason,
-        "sentiment": "neutral",
-        "topics_detected": [],
+        "risks_followups": ["Low audio clarity"],
+        "conclusion": reason
     }
+
 
 
 def _extract_json(text: str) -> str:
@@ -141,16 +145,19 @@ def ai_generate_mom(transcript: str, context_prompt: str = "") -> Dict[str, Any]
 
         # Merge with defaults to ensure all keys exist
         defaults = {
-            "meetDate": datetime.now().strftime("%Y-%m-%d"),
+            "meeting_title": "Meeting Summary",
+            "date": datetime.now().strftime("%Y-%m-%d"),
             "participants": [],
-            "agenda": "Meeting",
+            "agenda": "Meeting Summary",
+            "summary": "Meeting details processed",
+            "duration": "0s",
+            "total_attendees": 0,
+            "attendance_log": [],
             "key_discussions": [],
             "decisions": [],
             "action_items": [],
-            "risks": [],
+            "risks_followups": [],
             "conclusion": "",
-            "sentiment": "neutral",
-            "topics_detected": [],
         }
 
         for key, val in defaults.items():

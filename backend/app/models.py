@@ -70,14 +70,18 @@ class MOMRecord(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     meeting_id = Column(String(255), ForeignKey("meetings.meeting_id"), nullable=False)
+    meeting_title = Column(String(500), default="Meeting Summary")
+    date = Column(String(100), default="")
+    participants = Column(JSON, default=list)
     agenda = Column(Text, default="Meeting Summary")
+    summary = Column(Text, default="")
+    duration = Column(String(50), default="0s")
+    total_attendees = Column(Integer, default=0)
+    attendance_log = Column(JSON, default=list)
     key_discussions = Column(JSON, default=list)
     decisions = Column(JSON, default=list)
-    risks = Column(JSON, default=list)
+    risks_followups = Column(JSON, default=list)
     conclusion = Column(Text, default="")
-    sentiment = Column(JSON, default=dict)         # positive, neutral, negative
-    topics = Column(JSON, default=list)
-    engagement_score = Column(Float, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     meeting = relationship("Meeting", back_populates="mom_record")
@@ -106,8 +110,7 @@ class ActionItem(Base):
     task = Column(Text, nullable=False)
     owner = Column(String(255), default="TBD")
     deadline = Column(String(255), default="TBD")
-    priority = Column(String(20), default="medium")           # high, medium, low
-    status = Column(String(20), default="pending")            # pending, in_progress, completed, overdue
+    status = Column(String(20), default="Pending")            # Pending, In Progress, Completed, Overdue
     linked_meeting_id = Column(String(255))                   # Follow-up from which meeting
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
